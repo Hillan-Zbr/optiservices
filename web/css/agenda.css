@@ -1,0 +1,143 @@
+/* Optiservices — vue Agenda (écran 3) */
+:root{
+  --ag-fond:#F3F5F7; --ag-carte:#FFFFFF; --ag-bord:#D9E0E6; --ag-bord-ctrl:#C5CFD9; --ag-ligne-h:#E4E9EE;
+  --ag-txt:#15212C; --ag-txt2:#4B5A67; --ag-txt3:#33414E;
+  --ag-rdv:#2F6DB5; --ag-o2:#0A6B5C; --ag-rdv-act:#9DB9DB; --ag-o2-act:#8CC2B9;
+  --ag-trajet:#E9EEF3; --ag-trajet-act:#F1F4F7; --ag-trajet-bord:#C3CFDC; --ag-setup:#AEBBC9;
+  --ag-orange:#E07B00; --ag-rouge:#B3261E; --ag-over-fond:#F6D4D1; --ag-over-txt:#7A1912;
+  --ag-warn-fond:#FDEBD3; --ag-warn-txt:#5C3700; --ag-attente-txt:#6A4300;
+  --ag-pause-a:#E9EDF1; --ag-pause-b:#D2D9E0; --ag-attente-a:#FCEBD0; --ag-attente-b:#F3D29B;
+  --ag-hors:rgba(21,33,44,.07); --ag-lien:#1D5FA6;
+  --ag-f:'IBM Plex Sans',system-ui,-apple-system,'Segoe UI',sans-serif;
+}
+
+/* ---------- bascule de vue (en-tête de l'écran 3) ---------- */
+.vue-switch{display:flex}
+.vue-switch button{min-height:44px;padding:0 18px;border:1px solid var(--ag-bord-ctrl);background:var(--ag-carte);color:var(--ag-txt);font:500 14px var(--ag-f);cursor:pointer;margin:0}
+.vue-switch button:first-child{border-radius:8px 0 0 8px;border-right:0}
+.vue-switch button:last-child{border-radius:0 8px 8px 0}
+.vue-switch button[aria-pressed=true]{background:var(--ag-txt);border-color:var(--ag-txt);color:#fff;font-weight:600}
+.vue-switch button:focus-visible{outline:3px solid var(--ag-lien);outline-offset:2px}
+
+body[data-view=resultat][data-rvue=agenda] #v-resultat .split,
+body[data-view=resultat][data-rvue=agenda] #r-unassigned,
+body[data-view=resultat][data-rvue=agenda] #r-compare{display:none!important}
+
+/* ---------- conteneur ---------- */
+#r-agenda{display:flex;flex-direction:column;gap:20px;color:var(--ag-txt);font-family:var(--ag-f)}
+.ag-card{background:var(--ag-carte);border:1px solid var(--ag-bord);border-radius:10px;padding:16px;min-width:0}
+.ag-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.ag-hint{margin:0;font-size:14px;color:var(--ag-txt2)}
+
+/* ---------- barre d'outils ---------- */
+.ag-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:12px 20px;padding:12px 16px}
+.ag-field{display:flex;align-items:center;gap:8px}
+.ag-field label,.ag-flabel{margin:0;font-size:13px;font-weight:600;color:var(--ag-txt2)}
+#ag-jour{width:auto;min-height:44px;padding:0 12px;border:1px solid var(--ag-bord-ctrl);border-radius:8px;font:14px var(--ag-f);color:var(--ag-txt)}
+.ag-segbtns{display:flex}
+.ag-opt{min-height:44px;padding:0 16px;margin:0 0 0 -1px;border:1px solid var(--ag-bord-ctrl);background:var(--ag-carte);color:var(--ag-txt);font:500 14px var(--ag-f);cursor:pointer}
+.ag-opt:first-child{border-radius:8px 0 0 8px;margin-left:0}
+.ag-opt:last-child{border-radius:0 8px 8px 0}
+.ag-opt[aria-pressed=true]{background:var(--ag-txt);border-color:var(--ag-txt);color:#fff;position:relative}
+.ag-opt:disabled{color:var(--ag-txt2);background:var(--ag-fond);cursor:not-allowed}
+.ag-opt:focus-visible{outline:3px solid var(--ag-lien);outline-offset:2px;position:relative;z-index:1}
+.ag-summary{margin-left:auto;font-size:14px;color:var(--ag-txt3);font-variant-numeric:tabular-nums}
+
+/* ---------- corps ---------- */
+.ag-body{display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start}
+.ag-main{flex:999 1 640px;display:flex;flex-direction:column;gap:14px}
+.ag-side{flex:1 1 300px;max-width:380px;min-width:0;display:flex;flex-direction:column;gap:20px;position:sticky;top:16px}
+.ag-msg{margin:0;padding:12px 16px;border-radius:8px;background:#EEF3F9;border:1px solid #C6D6EC;font-size:14px}
+.ag-note{margin:0;font-size:13px;color:var(--ag-txt2)}
+
+/* ---------- grille ---------- */
+.ag-scroll{overflow-x:auto;container-type:inline-size}
+.ag-grid{display:flex;min-width:100%;padding:10px 0 12px}
+.ag-axis{width:var(--ag-axe);flex:none;position:sticky;left:0;z-index:3;background:var(--ag-carte)}
+.ag-tick{position:absolute;right:8px;transform:translateY(-50%);font-size:12px;font-weight:500;color:var(--ag-txt2)}
+.ag-col{flex:1 0 max(var(--ag-col-min), calc((100cqw - var(--ag-axe)) / var(--ag-max-cols)));min-width:var(--ag-col-min);border-left:1px solid var(--ag-bord)}
+.ag-colh{height:var(--ag-entete);box-sizing:border-box;padding:6px 8px;display:flex;flex-direction:column;justify-content:center;gap:1px;border-bottom:1px solid var(--ag-bord);min-width:0}
+.ag-axis .ag-colh{border-bottom:0}
+.ag-amd{font-size:15px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ag-sub,.ag-fin{font-size:12px;color:var(--ag-txt2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ag-fin{font-weight:600;color:var(--ag-txt3)}
+.ag-fin.over{color:var(--ag-rouge)}
+.ag-colb{position:relative;background-image:repeating-linear-gradient(180deg,var(--ag-ligne-h) 0 1px,transparent 1px var(--ag-pph))}
+.ag-axis .ag-colb{background:none}
+.ag-off{position:absolute;left:0;right:0;background:var(--ag-hors);pointer-events:none}
+.ag-lane{position:absolute;top:0;bottom:0}
+.ag-lane.opt{left:4px;right:4px}
+.ag-grid.cmp .ag-lane.opt{right:calc(34% + 8px)}
+.ag-lane.act{right:4px;width:34%;pointer-events:none}
+.ag-vide{position:absolute;left:8px;right:8px;top:12px;text-align:center;font-size:13px;color:var(--ag-txt2)}
+
+/* ---------- segments ---------- */
+.ag-seg{position:absolute;left:0;right:0;box-sizing:border-box;border:0;padding:0;margin:0;font-family:inherit;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.k-trajet,.k-retour{background:var(--ag-trajet);color:var(--ag-txt3);font-size:12px;padding:0 8px;display:flex;align-items:center;border-radius:3px}
+.k-retour.over{background:var(--ag-over-fond);color:var(--ag-over-txt);font-weight:600}
+.k-setup{background:var(--ag-setup);border-radius:2px}
+.k-pause{border-radius:4px;background:repeating-linear-gradient(135deg,var(--ag-pause-a) 0 6px,var(--ag-pause-b) 6px 12px);color:var(--ag-txt3);font-size:12px;display:flex;align-items:center;justify-content:center}
+.k-attente{border-radius:4px;background:repeating-linear-gradient(135deg,var(--ag-attente-a) 0 6px,var(--ag-attente-b) 6px 12px);color:var(--ag-attente-txt);font-size:12px;display:flex;align-items:center;justify-content:center}
+.k-rdv{background:var(--ag-rdv);color:#fff;border-radius:6px;text-align:left;padding:3px 8px;cursor:pointer;display:flex;flex-direction:column;justify-content:center;font-size:12px;line-height:1.2;z-index:1}
+.k-rdv.o2{background:var(--ag-o2)}
+.k-rdv span{display:block;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.k-rdv .l1{font-weight:600}
+.k-rdv .l3{opacity:.92;font-variant-numeric:tabular-nums}
+.k-rdv.compact{justify-content:flex-start;padding:1px 8px}
+.k-rdv.compact .l2,.k-rdv.compact .l3{display:none}
+.k-rdv.warn{box-shadow:0 0 0 2px #fff,0 0 0 4px var(--ag-orange)}
+.k-rdv.hov{filter:brightness(1.12)}
+.k-rdv.sel{box-shadow:0 0 0 2px #fff,0 0 0 4px var(--ag-txt);z-index:2}
+.k-rdv:focus-visible{outline:3px solid var(--ag-txt);outline-offset:2px;z-index:2}
+.ag-seg.act{outline:1px dashed #53626F;outline-offset:-1px}
+.ag-seg.act.k-rdv{background:var(--ag-rdv-act);box-shadow:none;padding:0;cursor:default}
+.ag-seg.act.k-rdv.o2{background:var(--ag-o2-act)}
+.ag-seg.act.k-trajet,.ag-seg.act.k-retour{background:var(--ag-trajet-act)}
+
+/* ---------- légende ---------- */
+.ag-legend{list-style:none;margin:0;padding:12px 0 0;border-top:1px solid var(--ag-bord);display:flex;flex-wrap:wrap;gap:8px 20px;font-size:12px;color:var(--ag-txt3)}
+.ag-legend li{display:flex;align-items:center;gap:6px}
+.ag-swatch{width:18px;height:12px;border-radius:3px;flex:none}
+.sw-rdv{background:var(--ag-rdv)}
+.sw-rdv-o2{background:var(--ag-o2)}
+.sw-setup{height:6px;border-radius:2px;background:var(--ag-setup)}
+.sw-trajet{background:var(--ag-trajet);box-shadow:inset 0 0 0 1px var(--ag-trajet-bord)}
+.sw-pause{background:repeating-linear-gradient(135deg,var(--ag-pause-a) 0 4px,var(--ag-pause-b) 4px 8px)}
+.sw-attente{background:repeating-linear-gradient(135deg,var(--ag-attente-a) 0 4px,var(--ag-attente-b) 4px 8px)}
+.sw-warn{background:#fff;box-shadow:0 0 0 2px var(--ag-orange)}
+.sw-over{background:var(--ag-over-fond)}
+.sw-off{border-radius:0;background:rgba(21,33,44,.12)}
+
+/* ---------- panneaux latéraux ---------- */
+.ag-side h2{margin:0;font-size:16px;font-weight:700}
+.ag-detail,.ag-placer{display:flex;flex-direction:column;gap:12px}
+.ag-detail-body{display:flex;flex-direction:column;gap:10px}
+.ag-patient{font-size:18px;font-weight:700}
+.ag-ville{font-size:14px;color:var(--ag-txt3)}
+.ag-kv{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 16px;font-size:14px}
+.ag-k{font-size:12px;color:var(--ag-txt2)}
+.ag-v{font-weight:600;font-variant-numeric:tabular-nums}
+.ag-warn{margin:0;padding:10px 12px;border-radius:6px;background:var(--ag-warn-fond);color:var(--ag-warn-txt);font-size:13px;font-weight:500}
+.ag-alert{margin:0;padding:10px 12px;border-radius:6px;background:#FDECEA;color:var(--ag-over-txt);font-size:13px;font-weight:500}
+.ag-voir{min-height:44px;border:1px solid var(--ag-lien);border-radius:8px;background:var(--ag-carte);color:var(--ag-lien);font:600 14px var(--ag-f);cursor:pointer}
+.ag-voir:hover:not(:disabled){background:#EEF3F9}
+.ag-voir:disabled{opacity:.5;cursor:default}
+.ag-voir:focus-visible{outline:3px solid var(--ag-lien);outline-offset:2px}
+.ag-row{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.ag-uncount{font-size:13px;color:var(--ag-rouge);font-weight:600}
+.ag-unlist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.ag-unitem{width:100%;text-align:left;padding:10px 12px;border:1px solid var(--ag-bord);border-radius:8px;background:var(--ag-carte);display:flex;flex-direction:column;gap:4px;font-family:inherit;color:inherit;margin:0}
+button.ag-unitem{cursor:pointer}
+button.ag-unitem:hover{background:#F6F9FC}
+.ag-unitem.sel{border-color:var(--ag-txt);box-shadow:inset 0 0 0 1px var(--ag-txt)}
+.ag-unitem:focus-visible{outline:3px solid var(--ag-txt);outline-offset:2px}
+.ag-untitre{font-size:14px;font-weight:600}
+.ag-unmotif{font-size:13px;color:var(--ag-txt3)}
+
+/* survol d'un RDV de l'agenda : repère correspondant sur la carte */
+.pin.hov{transform:scale(1.25);box-shadow:0 0 0 3px #15212C,0 2px 6px rgba(0,0,0,.5)}
+
+@media print{
+  #r-agenda,.vue-switch{display:none!important}
+  body[data-rvue=agenda] #v-resultat .split{display:block!important}
+}

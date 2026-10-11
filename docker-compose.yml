@@ -1,0 +1,25 @@
+services:
+  osrm:
+    image: ghcr.io/project-osrm/osrm-backend:v5.27.1
+    command: osrm-routed --algorithm mld --max-table-size 10000 /data/paca-corse.osrm
+    volumes: [ "./osrm:/data" ]
+    ports: [ "5000:5000" ]
+    restart: unless-stopped
+
+  vroom:
+    image: ghcr.io/vroom-project/vroom-docker:v1.14.0
+    environment:
+      - VROOM_ROUTER=osrm
+    volumes: [ "./vroom-conf:/conf" ]
+    ports: [ "3000:3000" ]
+    depends_on: [ osrm ]
+    restart: unless-stopped
+
+  web:
+    image: nginx:1.27-alpine
+    volumes:
+      - ./web:/usr/share/nginx/html:ro
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    ports: [ "8080:80" ]
+    depends_on: [ vroom, osrm ]
+    restart: unless-stopped

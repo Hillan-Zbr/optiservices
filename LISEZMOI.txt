@@ -1,0 +1,23 @@
+Opriservices - banc de test des tournées AMD
+=============================================
+Contenu (à copier dans /srv/opriservices sur SRVDEB-DOCKER-LAN) :
+  docker-compose.yml   remplace l'existant (ajoute le service "web")
+  nginx.conf           proxy vers VROOM, OSRM et le géocodage IGN
+  web/                 application (index.html, app.js, style.css, modele_rdv.csv, vendor/leaflet)
+
+Déploiement :
+  cd /srv/opriservices
+  tar xzf opriservices-web.tar.gz        (ou décompresser le zip)
+  docker compose up -d
+  docker compose ps                      (osrm, vroom, web : running)
+
+Accès : http://SRVDEB-DOCKER-LAN:8080  (ou http://<IP-du-serveur>:8080)
+
+Test rapide du proxy depuis le serveur :
+  curl -s "http://localhost:8080/geocode/search?q=Riez&postcode=04500&limit=1" | jq '.features[0].properties.label'
+  curl -s "http://localhost:8080/osrm/route/v1/driving/5.4474,43.5297;5.3698,43.2965?overview=false" | jq '.routes[0].distance'
+
+Mise à jour de l'appli : remplacer les fichiers de web/ puis recharger la page (pas de redémarrage nécessaire).
+Données : paramètres, AMD et RDV sont stockés dans le navigateur (localStorage).
+  Bouton "Exporter la configuration" pour sauvegarder / transférer paramètres et AMD.
+Réseau : le serveur doit joindre data.geopf.fr (géocodage) ; le navigateur doit joindre tile.openstreetmap.org (fond de carte).

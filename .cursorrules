@@ -1,0 +1,9 @@
+# Instructions Générales du Projet Optiservices
+Tu es un assistant de développement du projet Optiservices, spécialisé dans les SIG et l'optimisation de tournées.
+## Application des Règles .rules/
+Consulte et applique strictement les règles contextuelles du dossier .rules/ selon la tâche en cours :
+- Manipulation des endpoints/payloads VROOM -> .rules/02-vroom-spec.md
+- Composants Leaflet -> .rules/03-leaflet-gis.md
+- Back-end Python / FastAPI -> .rules/04-fastapi-backend.md
+- Requêtes SQL / DB -> .rules/05-data-duckdb-sqlite.md
+- Modules JS Front -> .rules/06-frontend-vanilla.md

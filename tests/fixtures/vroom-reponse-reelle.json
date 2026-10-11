@@ -1,0 +1,231 @@
+{
+ "code": 0,
+ "summary": {
+  "cost": 9903,
+  "routes": 2,
+  "unassigned": 1,
+  "setup": 3600,
+  "service": 18600,
+  "duration": 9903,
+  "waiting_time": 0,
+  "priority": 0,
+  "distance": 118595,
+  "violations": []
+ },
+ "unassigned": [
+  {
+   "id": 7,
+   "location": [
+    7.2,
+    43.9
+   ],
+   "type": "job"
+  }
+ ],
+ "routes": [
+  {
+   "vehicle": 1,
+   "cost": 2893,
+   "description": "V1",
+   "setup": 1800,
+   "service": 10500,
+   "duration": 2893,
+   "waiting_time": 0,
+   "priority": 0,
+   "distance": 27474,
+   "steps": [
+    {
+     "type": "start",
+     "location": [
+      5.5682,
+      43.2925
+     ],
+     "setup": 0,
+     "service": 0,
+     "waiting_time": 0,
+     "arrival": 38053,
+     "duration": 0,
+     "violations": [],
+     "distance": 0
+    },
+    {
+     "type": "job",
+     "location": [
+      5.6,
+      43.3
+     ],
+     "id": 1,
+     "setup": 600,
+     "service": 900,
+     "waiting_time": 0,
+     "job": 1,
+     "arrival": 38439,
+     "duration": 386,
+     "violations": [],
+     "distance": 3196
+    },
+    {
+     "type": "job",
+     "location": [
+      5.54,
+      43.33
+     ],
+     "id": 2,
+     "setup": 600,
+     "service": 2400,
+     "waiting_time": 0,
+     "job": 2,
+     "arrival": 40863,
+     "duration": 1310,
+     "violations": [],
+     "distance": 10914
+    },
+    {
+     "type": "break",
+     "description": "Pause",
+     "id": 1,
+     "setup": 0,
+     "service": 3600,
+     "waiting_time": 0,
+     "arrival": 43863,
+     "duration": 1310,
+     "violations": [],
+     "distance": 10914
+    },
+    {
+     "type": "job",
+     "location": [
+      5.63,
+      43.27
+     ],
+     "id": 3,
+     "setup": 600,
+     "service": 3600,
+     "waiting_time": 0,
+     "job": 3,
+     "arrival": 48600,
+     "duration": 2447,
+     "violations": [],
+     "distance": 21549
+    },
+    {
+     "type": "end",
+     "location": [
+      5.5682,
+      43.2925
+     ],
+     "setup": 0,
+     "service": 0,
+     "waiting_time": 0,
+     "arrival": 53246,
+     "duration": 2893,
+     "violations": [],
+     "distance": 27474
+    }
+   ],
+   "violations": []
+  },
+  {
+   "vehicle": 2,
+   "cost": 7010,
+   "description": "V2",
+   "setup": 1800,
+   "service": 8100,
+   "duration": 7010,
+   "waiting_time": 0,
+   "priority": 0,
+   "distance": 91121,
+   "steps": [
+    {
+     "type": "start",
+     "location": [
+      5.9416,
+      44.196
+     ],
+     "setup": 0,
+     "service": 0,
+     "waiting_time": 0,
+     "arrival": 36365,
+     "duration": 0,
+     "violations": [],
+     "distance": 0
+    },
+    {
+     "type": "job",
+     "location": [
+      5.95,
+      44.21
+     ],
+     "id": 6,
+     "setup": 600,
+     "service": 900,
+     "waiting_time": 0,
+     "job": 6,
+     "arrival": 36720,
+     "duration": 355,
+     "violations": [],
+     "distance": 3439
+    },
+    {
+     "type": "job",
+     "location": [
+      6.2356,
+      44.0925
+     ],
+     "id": 4,
+     "setup": 600,
+     "service": 2700,
+     "waiting_time": 0,
+     "job": 4,
+     "arrival": 41352,
+     "duration": 3487,
+     "violations": [],
+     "distance": 46427
+    },
+    {
+     "type": "break",
+     "description": "Pause",
+     "id": 2,
+     "setup": 0,
+     "service": 3600,
+     "waiting_time": 0,
+     "arrival": 44652,
+     "duration": 3487,
+     "violations": [],
+     "distance": 46427
+    },
+    {
+     "type": "job",
+     "location": [
+      6.25,
+      44.08
+     ],
+     "id": 5,
+     "setup": 600,
+     "service": 900,
+     "waiting_time": 0,
+     "job": 5,
+     "arrival": 48600,
+     "duration": 3835,
+     "violations": [],
+     "distance": 49074
+    },
+    {
+     "type": "end",
+     "location": [
+      5.9416,
+      44.196
+     ],
+     "setup": 0,
+     "service": 0,
+     "waiting_time": 0,
+     "arrival": 53275,
+     "duration": 7010,
+     "violations": [],
+     "distance": 91121
+    }
+   ],
+   "violations": []
+  }
+ ]
+}

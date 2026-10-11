@@ -1,0 +1,10 @@
+# Données cartographiques OSRM (1,5 Go, régénérables — voir DEPLOIMENT-VPS.MD)
+osrm/
+# Journaux
+vroom-conf/access.log
+*.log
+# Anciennes archives de livraison
+*.tar.gz
+*.zip
+# Outils
+node_modules/

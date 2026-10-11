@@ -1,0 +1,5 @@
+﻿date;patient;code_postal;ville;adresse;intervention;demi_journee;amd_actuel
+16/10/2026;Patient test 01;04100;Manosque;;LIV;matin;GALLIANO
+16/10/2026;Patient test 02;04110;Reillanne;;PPC;matin;GALLIANO
+16/10/2026;Patient test 08;04120;La Palud-sur-Verdon;;LIT;apres-midi;GALLIANO
+16/10/2026;Patient test 10;04000;Digne-les-Bains;12 rue Exemple;O2;matin;GUINET FONTAINE

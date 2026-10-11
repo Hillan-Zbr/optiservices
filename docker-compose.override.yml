@@ -1,0 +1,19 @@
+# Override VPS : aucun port publié directement sur Internet.
+# Accès public via Traefik (HTTPS + mot de passe, config dans /srv/traefik/dynamic/optiservices.yml)
+# et accès de secours par tunnel SSH sur 127.0.0.1:8080.
+services:
+  osrm:
+    ports: !reset []
+  vroom:
+    ports: !reset []
+  web:
+    ports: !override
+      - "127.0.0.1:8080:80"
+    networks:
+      default:
+      traefik_ext:
+        aliases: [ optiservices-web ]
+
+networks:
+  traefik_ext:
+    external: true

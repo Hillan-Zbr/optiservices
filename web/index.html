@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Opriservices · Tournées AMD</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="css/agenda.css">
+</head>
+<body>
+<header class="top">
+  <div class="wrap top-in">
+    <div class="brand"><strong>Opriservices</strong><span>Banc de test des tournées · Arard Services</span></div>
+    <nav class="tabs" aria-label="Étapes">
+      <a href="#parametres" data-tab="parametres">1 · Paramètres</a>
+      <a href="#planification" data-tab="planification">2 · Planification</a>
+      <a href="#resultat" data-tab="resultat">3 · Résultat</a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+
+<!-- ============ 1. PARAMÈTRES ============ -->
+<section id="v-parametres" class="view" hidden>
+  <div class="head">
+    <div>
+      <h1>Paramètres métier</h1>
+      <p class="sub">Valeurs utilisées par l'optimiseur pour toutes les simulations. Enregistrement automatique dans ce navigateur.</p>
+    </div>
+    <div class="actions">
+      <a class="btn2" href="#trajet">Test : trajet entre deux villes</a>
+      <button class="btn2" id="cfg-export" type="button">Exporter la configuration</button>
+      <label class="btn2" for="cfg-import">Importer une configuration</label>
+      <input type="file" id="cfg-import" accept=".json" hidden>
+      <span class="saved" id="saved-flag" hidden>Enregistré</span>
+    </div>
+  </div>
+
+  <div class="grid2">
+    <section class="card">
+      <h2>Créneaux de rendez-vous</h2>
+      <table class="tbl">
+        <thead><tr><th>Créneau</th><th>Début</th><th>Fin</th></tr></thead>
+        <tbody id="t-creneaux"></tbody>
+      </table>
+      <div class="grid2 tight">
+        <div><label for="p-pause-deb">Pause déjeuner : début au plus tôt</label><input id="p-pause-deb" type="time" data-param="pauseDeb"></div>
+        <div><label for="p-pause-fin">Pause déjeuner : fin au plus tard</label><input id="p-pause-fin" type="time" data-param="pauseFin"></div>
+        <div><label for="p-pause-duree">Durée de la pause (min)</label><input id="p-pause-duree" type="number" min="0" step="5" data-param="pauseDuree"></div>
+        <div><label for="p-stat">Temps de stationnement (min)</label><input id="p-stat" type="number" min="0" step="1" data-param="stationnement"></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Limites par AMD (valeurs par défaut)</h2>
+      <div class="grid2 tight">
+        <div><label for="p-amp-deb">Début de journée</label><input id="p-amp-deb" type="time" data-param="ampDeb"></div>
+        <div><label for="p-amp-fin">Fin de journée</label><input id="p-amp-fin" type="time" data-param="ampFin"></div>
+        <div><label for="p-hmax">Heures max de conduite</label><input id="p-hmax" type="number" min="0" step="0.5" data-param="hmax"></div>
+        <div><label for="p-kmmax">Kilomètres max / jour</label><input id="p-kmmax" type="number" min="0" step="10" data-param="kmmax"></div>
+        <div><label for="p-coef">Majoration trafic (%)</label><input id="p-coef" type="number" min="0" max="100" step="5" data-param="coef"></div>
+      </div>
+      <p class="hint">Les heures et km max sont repris pour chaque nouvel AMD et restent modifiables à l'écran 2. La majoration allonge tous les temps de trajet calculés.</p>
+    </section>
+  </div>
+
+  <section class="card">
+    <div class="row-between">
+      <h2>Types d'intervention</h2>
+      <button class="btn2" id="type-add" type="button">+ Ajouter un type</button>
+    </div>
+    <div class="scroll">
+      <table class="tbl">
+        <thead><tr><th>Code CSV</th><th>Libellé</th><th>Durée sur place (min)</th><th>Réservé aux AMD habilités O2</th><th></th></tr></thead>
+        <tbody id="t-types"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="row-between">
+      <h2>Points de départ · siège et antennes</h2>
+      <button class="btn2" id="depot-geo" type="button">Localiser les adresses</button>
+    </div>
+    <div class="depots" id="l-depots"></div>
+  </section>
+</section>
+
+<!-- ============ TEST TRAJET ============ -->
+<section id="v-trajet" class="view" hidden>
+  <div class="head">
+    <div>
+      <a href="#parametres">← Retour aux paramètres</a>
+      <h1>Test : trajet entre deux villes</h1>
+      <p class="sub">Vérifier que les distances et temps calculés correspondent à ce que les AMD constatent sur le terrain.</p>
+    </div>
+  </div>
+  <section class="card form-row">
+    <div class="grow"><label for="tr-dep">Départ (ville, adresse, siège ou antenne)</label><input id="tr-dep" list="dl-depots" value="Siège · Aubagne (13)"></div>
+    <div class="grow"><label for="tr-arr">Arrivée</label><input id="tr-arr" placeholder="ex. Riez 04500"></div>
+    <div class="w160"><label for="tr-h">Heure de départ</label><input id="tr-h" type="time" value="08:00"></div>
+    <button class="btn" id="tr-go" type="button">Calculer</button>
+    <datalist id="dl-depots"></datalist>
+  </section>
+  <p class="msg" id="tr-msg" hidden></p>
+  <div class="split">
+    <div class="col-narrow">
+      <section class="card kpis">
+        <div><span>Distance</span><b class="mono" id="tr-km">–</b></div>
+        <div><span>Temps calculé</span><b class="mono" id="tr-min">–</b></div>
+        <div><span>Temps majoré</span><b class="mono accent" id="tr-maj">–</b></div>
+        <div><span>Arrivée estimée</span><b class="mono" id="tr-eta">–</b></div>
+      </section>
+      <section class="card">
+        <label for="tr-terrain">Estimation terrain de l'AMD (minutes)</label>
+        <div class="form-row">
+          <input id="tr-terrain" type="number" min="0" class="w160" placeholder="ex. 90">
+          <span class="hint" id="tr-ecart">Saisir pour comparer avec le calcul</span>
+        </div>
+      </section>
+      <p class="hint" id="tr-geo"></p>
+    </div>
+    <div class="col-wide"><div class="map" id="map-trajet"></div></div>
+  </div>
+</section>
+
+<!-- ============ 2. PLANIFICATION ============ -->
+<section id="v-planification" class="view" hidden>
+  <div class="head">
+    <div>
+      <h1>Planification de test</h1>
+      <p class="sub">Saisir ou importer une journée, puis lancer l'optimisation.</p>
+    </div>
+    <div class="actions">
+      <div><label for="pl-date">Date planifiée</label><input id="pl-date" class="mono" placeholder="jj/mm/aaaa" maxlength="10" inputmode="numeric" autocomplete="off" style="width:140px"></div>
+      <button class="btn" id="pl-go" type="button">Optimiser les tournées</button>
+    </div>
+  </div>
+  <p class="msg" id="pl-msg" hidden></p>
+
+  <section class="card">
+    <div class="row-between">
+      <h2>AMD disponibles <span class="count" id="c-amd"></span></h2>
+      <button class="btn2" id="amd-add" type="button">+ Ajouter un AMD</button>
+    </div>
+    <div class="scroll">
+      <table class="tbl">
+        <thead><tr><th>Nom</th><th>Point de départ</th><th>Disponible</th><th>Heures max</th><th>Km max</th><th>Habilité O2</th><th></th></tr></thead>
+        <tbody id="t-amd"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="row-between">
+      <h2>Rendez-vous patients <span class="count" id="c-rdv"></span></h2>
+      <div class="actions">
+        <label class="btn2" for="csv-file">Importer des RDV (CSV)</label>
+        <input type="file" id="csv-file" accept=".csv,text/csv" hidden>
+        <button class="btn2" id="rdv-add" type="button">+ Ajouter un RDV</button>
+        <button class="btn2" id="rdv-demo" type="button">Charger l'exemple</button>
+        <span id="del-zone"><button class="btn2 danger" id="rdv-clear" type="button">Tout supprimer</button></span>
+      </div>
+    </div>
+    <div id="csv-report" hidden></div>
+    <div class="scroll">
+      <table class="tbl">
+        <thead><tr><th>Date</th><th>Patient (test)</th><th>CP</th><th>Ville</th><th>Adresse</th><th>Intervention</th><th>Demi-journée</th><th>AMD prévu aujourd'hui</th><th>Localisation</th><th></th></tr></thead>
+        <tbody id="t-rdv"></tbody>
+      </table>
+    </div>
+    <p class="hint">Seuls les RDV de la date planifiée sont optimisés. La colonne « AMD prévu aujourd'hui » est facultative : elle sert à comparer la planification actuelle avec la proposition optimisée.</p>
+
+    <details class="csvfmt">
+      <summary>Format du fichier CSV à importer</summary>
+      <p>Fichier texte UTF-8, séparateur point-virgule <code>;</code>, une ligne d'en-tête puis une ligne par RDV. Depuis Excel : « Enregistrer sous › CSV UTF-8 (délimité par des points-virgules) ». Les RDV importés s'ajoutent à ceux déjà présents.</p>
+      <div class="scroll">
+        <table class="tbl">
+          <thead><tr><th>Colonne</th><th>Obligatoire</th><th>Valeurs attendues</th><th>Exemple</th></tr></thead>
+          <tbody id="t-csvfmt"></tbody>
+        </table>
+      </div>
+      <pre class="code">date;patient;code_postal;ville;adresse;intervention;demi_journee;amd_actuel
+16/10/2026;Patient test 01;04100;Manosque;;LIV;matin;GALLIANO
+16/10/2026;Patient test 08;04120;La Palud-sur-Verdon;;LIT;apres-midi;GALLIANO
+16/10/2026;Patient test 10;04000;Digne-les-Bains;12 rue Exemple;O2;matin;GUINET FONTAINE</pre>
+      <div class="form-row">
+        <a class="btn2" href="modele_rdv.csv" download>Télécharger le modèle CSV</a>
+        <span class="hint">Les lignes en erreur sont listées après l'import, sans bloquer les autres. Un code postal à 4 chiffres (zéro supprimé par Excel) est corrigé automatiquement.</span>
+      </div>
+    </details>
+  </section>
+</section>
+
+<!-- ============ 3. RÉSULTAT ============ -->
+<section id="v-resultat" class="view" hidden>
+  <div class="head">
+    <div>
+      <div class="daynav">
+        <button class="navbtn noprint" id="r-prev" type="button" aria-label="Journée précédente" title="Journée précédente (←)">←</button>
+        <h1 id="r-titre">Tournées optimisées</h1>
+        <button class="navbtn noprint" id="r-next" type="button" aria-label="Journée suivante" title="Journée suivante (→)">→</button>
+        <span class="hint noprint" id="r-pos"></span>
+      </div>
+      <p class="sub" id="r-sub"></p>
+    </div>
+    <div class="actions noprint">
+      <div class="vue-switch" role="group" aria-label="Vue">
+        <button type="button" id="vue-carte" aria-pressed="true">Carte + liste</button>
+        <button type="button" id="vue-agenda" aria-pressed="false">Agenda</button>
+      </div>
+      <button class="btn2" id="r-csv" type="button">Exporter en CSV (Excel)</button>
+      <button class="btn2" id="r-print" type="button">Imprimer les feuilles de route</button>
+    </div>
+  </div>
+
+  <p class="msg" id="r-msg" hidden></p>
+  <div class="noprint" id="r-opt-zone" hidden><button class="btn" id="r-opt" type="button">Optimiser cette journée</button></div>
+
+  <div id="r-agenda" class="noprint" hidden></div>
+
+  <section class="card" id="r-compare" hidden>
+    <h2>Comparaison avec la planification actuelle</h2>
+    <div class="scroll">
+      <table class="tbl">
+        <thead><tr><th>Indicateur</th><th class="num">Actuel</th><th class="num">Optimisé</th><th class="num">Écart</th></tr></thead>
+        <tbody id="t-compare"></tbody>
+      </table>
+    </div>
+    <p class="hint">« Actuel » = mêmes affectations AMD que la colonne « AMD prévu aujourd'hui », avec le meilleur ordre de passage pour chacun. L'écart mesure donc le gain lié à la répartition entre AMD.</p>
+  </section>
+
+  <div class="split">
+    <div class="col-wide" id="r-routes"></div>
+    <aside class="col-narrow">
+      <div class="map noprint" id="map-result"></div>
+    </aside>
+  </div>
+
+  <section class="card" id="r-unassigned">
+    <h2>RDV non affectés <span class="count" id="c-unassigned"></span></h2>
+    <p class="hint" id="r-un-empty" hidden></p>
+    <div class="scroll" id="r-un-wrap" hidden>
+      <table class="tbl sortable">
+        <thead><tr>
+          <th><button type="button" data-sort="date">Date</button></th>
+          <th><button type="button" data-sort="patient">Patient</button></th>
+          <th><button type="button" data-sort="cp">CP</button></th>
+          <th><button type="button" data-sort="ville">Ville</button></th>
+          <th><button type="button" data-sort="adresse">Adresse</button></th>
+          <th><button type="button" data-sort="type">Intervention</button></th>
+          <th><button type="button" data-sort="cren">Demi-journée</button></th>
+          <th><button type="button" data-sort="amd">AMD prévu</button></th>
+          <th><button type="button" data-sort="why">Motif</button></th>
+        </tr></thead>
+        <tbody id="t-unassigned"></tbody>
+      </table>
+    </div>
+  </section>
+</section>
+
+</main>
+
+<script src="vendor/leaflet/leaflet.js"></script>
+<script src="app.js"></script>
+<script type="module" src="js/agenda/agenda-main.js"></script>
+</body>
+</html>
