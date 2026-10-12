@@ -41,7 +41,9 @@ function rdvDuree(rd, p = state.params) {
   return ds.length > 1 ? Math.round(sum * (Number(p.multiCoef) || 100) / 100) : sum;
 }
 const rdvO2 = (rd) => rdvTypes(rd).some((c) => { const t = typeOf(c); return t && t.o2; });
-const rdvTypeNom = (rd) => rdvTypes(rd).map((c) => (typeOf(c) || { nom: c }).nom).join(' + ');
+/* type(s) de visite affiché(s) : « CODE – libellé » (code Isadom sFKTypeVisite + libellé des paramètres) */
+const typeLabel = (c) => { const t = typeOf(c); return t && t.nom && t.nom !== c ? c + ' – ' + t.nom : c; };
+const rdvTypeNom = (rd) => rdvTypes(rd).map(typeLabel).join(' + ');
 /* informations d'accès Isadom (AnnAdresse) : affichées au RP à la demande, destinées ensuite à MJ2 */
 function rdvInfos(rd) {
   const a = rd.acces || {};
@@ -356,7 +358,7 @@ function renderPlan() {
     <td><input data-rdv="${i}" data-k="adresse" value="${esc(r.adresse)}" aria-label="Adresse"></td>
     <td>${r.types && r.types.length > 1
       ? `<span class="mono" title="${esc(rdvTypeNom(r))}">${esc(r.types.join(' + '))}</span><div class="hint">${rdvDuree(r)} min</div>`
-      : `<select data-rdv="${i}" data-k="type" aria-label="Intervention">${types.map((t) => `<option value="${esc(t.code)}" ${t.code === r.type ? 'selected' : ''}>${esc(t.nom)}</option>`).join('')}${typeOf(r.type) ? '' : `<option selected value="${esc(r.type)}">${esc(r.type)} (inconnu)</option>`}</select>`}</td>
+      : `<select data-rdv="${i}" data-k="type" aria-label="Intervention">${types.map((t) => `<option value="${esc(t.code)}" ${t.code === r.type ? 'selected' : ''}>${esc(typeLabel(t.code))}</option>`).join('')}${typeOf(r.type) ? '' : `<option selected value="${esc(r.type)}">${esc(r.type)} (inconnu)</option>`}</select>`}</td>
     <td style="width:130px">${isa && r.hDeb
       ? `<span class="badge ${crenOf(r.cren).badge}">${crenOf(r.cren).nom}</span><div class="hint mono">${esc(r.hDeb)}–${esc(r.hFin)}</div>`
       : `<select data-rdv="${i}" data-k="cren" aria-label="Demi-journée">${CRENEAUX.map((c) => `<option value="${c.code}" ${c.code === r.cren ? 'selected' : ''}>${c.nom}</option>`).join('')}</select>`}</td>
