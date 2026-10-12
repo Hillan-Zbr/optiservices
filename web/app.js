@@ -228,6 +228,15 @@ function geoBadge(g) {
   return `<span class="geo ${cls}" title="${esc(g.label)} · score ${g.score.toFixed(2)}">${cls === 'ok' ? 'Localisé' : 'À vérifier'}</span>`;
 }
 
+/* lignes du tableau des RDV écartés (écran 2 : prévision ; écran 3 : résultat) */
+function ecartesRows(list) {
+  return list.map((rd) => `<tr><td class="mono">${esc(frDate(rd.date))}</td><td class="mono">${esc(rd.idRdv || '')}</td><td><b>${esc(rd.patient)}</b>${rd.antenne ? `<div class="hint">${esc(rd.antenne)}</div>` : ''}</td>
+    <td class="mono">${esc(rd.cp)}</td><td>${esc(rd.ville || '?')}</td><td>${esc(rd.adresse)}</td><td>${esc(rdvTypeNom(rd))}</td>
+    <td class="mono">${esc(rd.hDeb ? rd.hDeb + '–' + rd.hFin : crenOf(rd.cren).nom)}</td><td>${esc(rd.amdActuel)}</td>
+    <td><b style="color:var(--danger)">${esc(rd.motif)}</b>${rd.geo && rd.geo.label ? `<div class="hint">localisé : ${esc(rd.geo.label)}</div>` : ''}</td></tr>`).join('');
+}
+const motifGeo = (rd) => (rd.geo && rd.geo.horsZone ? MOTIF_HORS_ZONE : rd.geo && !rd.geo.none && !inZone(rd.geo) ? MOTIF_HORS_ZONE : 'adresse introuvable');
+
 /* ---------- 1. paramètres ---------- */
 function renderParams() {
   const p = state.params;
@@ -330,6 +339,12 @@ function renderPlan() {
   const types = state.params.types;
   const dayAll = state.rdv.filter((r) => r.date === state.date);
   const nDay = dayAll.length; const nScope = dayAll.filter(rdvInScope).length;
+  const probs = state.rdv.filter((r) => rdvInScope(r) && r.geo && (r.geo.none || !inZone(r.geo)))
+    .map((r) => Object.assign({}, r, { motif: motifGeo(r) })).sort((a, b) => a.date.localeCompare(b.date));
+  const nProbDay = probs.filter((r) => r.date === state.date).length;
+  $('#pl-ecartes').hidden = !probs.length;
+  $('#c-pl-ecartes').textContent = probs.length ? `· ${probs.length}` + (nProbDay ? ` dont ${nProbDay} le ${frDate(state.date)}` : '') : '';
+  $('#t-pl-ecartes').innerHTML = ecartesRows(probs);
   $('#c-rdv').textContent = `· ${state.rdv.length} au total · ${nDay} le ${frDate(state.date)}` + (nScope < nDay ? ` dont ${nScope} sur les antennes du test` : '');
   // les RDV Isadom de la date sont affichés en tête ; ceux hors date ou hors antennes du test sont grisés
   const order = state.rdv.map((r, i) => i).sort((a, b) => (state.rdv[a].date === state.date ? 0 : 1) - (state.rdv[b].date === state.date ? 0 : 1) || a - b);
@@ -617,6 +632,17 @@ function importIsadom(rows, head, name) {
     + (all.length ? '<ul>' + all.slice(0, 30).map((x) => li(esc(x))).join('') + (all.length > 30 ? li('…') : '') + '</ul>' : '');
   if (seen.size && !state.rdv.some((r) => r.date === state.date)) state.date = [...dates].sort()[0];
   save(); renderPlan();
+  // localise tout de suite les RDV sans coordonnées Isadom, pour signaler dès l'import ceux qui seront écartés
+  const toGeo = [...seen.values()].filter((rd) => !rd.geo && rdvInScope(rd));
+  if (toGeo.length) {
+    const st = document.createElement('p'); st.className = 'hint'; st.textContent = `Localisation de ${toGeo.length} adresse${toGeo.length > 1 ? 's' : ''} sans coordonnées Isadom…`;
+    rep.appendChild(st);
+    pool(toGeo, geocodeRdv).catch((e) => console.error(e)).then(() => {
+      const nKo = toGeo.filter((rd) => !inZone(rd.geo)).length;
+      st.textContent = `${toGeo.length} adresse${toGeo.length > 1 ? 's' : ''} localisée${toGeo.length > 1 ? 's' : ''} par géocodage` + (nKo ? ` · ${nKo} introuvable${nKo > 1 ? 's' : ''} ou hors zone : voir « RDV qui ne pourront pas être optimisés » en haut de page.` : '.');
+      save(); renderPlan();
+    });
+  }
 }
 
 /* ---------- optimisation ---------- */
@@ -775,15 +801,20 @@ function renderResult() {
     $('#r-titre').textContent = 'Tournées · ' + longDate(state.date);
     $('#r-sub').textContent = n ? `Journée non optimisée · ${n} RDV prévu${n > 1 ? 's' : ''}.` : 'Aucun RDV ce jour. Préparez la journée à l’écran 2.';
     $('#r-opt').hidden = !n;
+    $('#r-ecartes').hidden = true;
     clearResult();
     if (mapR) setTimeout(() => mapR.invalidateSize(), 50);
     appBus.dispatchEvent(new CustomEvent('render'));
     return;
   }
   const res = R.res;
+  const ex = R.excluded || [];
+  $('#r-ecartes').hidden = !ex.length;
+  $('#c-ecartes').textContent = ex.length ? '· ' + ex.length : '';
+  $('#t-ecartes').innerHTML = ecartesRows(ex.map((rd) => Object.assign({}, rd, { motif: rd.motif || 'adresse introuvable' })));
   $('#r-titre').textContent = 'Tournées optimisées · ' + longDate(R.date);
   const used = res.routes.length;
-  $('#r-sub').textContent = `${R.rdv.length + R.excluded.length} RDV · ${R.amds.length} AMD disponibles · ${used} AMD mobilisé${used > 1 ? 's' : ''} · ${fmtKm(res.summary.distance)} · ${fmtDur(res.summary.duration)} de conduite`;
+  $('#r-sub').textContent = `${R.rdv.length + R.excluded.length} RDV${R.excluded.length ? ` (dont ${R.excluded.length} écarté${R.excluded.length > 1 ? 's' : ''} du calcul)` : ''} · ${R.amds.length} AMD disponibles · ${used} AMD mobilisé${used > 1 ? 's' : ''} · ${fmtKm(res.summary.distance)} · ${fmtDur(res.summary.duration)} de conduite`;
 
   // comparaison
   if (R.cmp) {
@@ -836,7 +867,7 @@ function renderResult() {
     if (!R.amds.some((a) => { const w = vehicleWindow(a, state.params); return w[0] < c[1] && w[1] > c[0]; })) return 'aucun AMD disponible sur ce créneau';
     return 'créneau, heures ou km max trop serrés';
   };
-  unRows = res.unassigned.map((u) => ({ rd: R.rdv[u.id - 1], job: u.id, why: why(R.rdv[u.id - 1]) })).concat(R.excluded.map((rd) => ({ rd, why: rd.motif || 'adresse introuvable' })));
+  unRows = res.unassigned.map((u) => ({ rd: R.rdv[u.id - 1], job: u.id, why: why(R.rdv[u.id - 1]) }));
   renderUnassigned();
 
   drawResultMap(R);
@@ -853,7 +884,8 @@ function renderUnassigned() {
   const rows = unRows || [];
   $('#c-unassigned').textContent = unRows ? '· ' + rows.length : '';
   $('#r-un-empty').hidden = rows.length > 0;
-  $('#r-un-empty').textContent = unRows ? 'Tous les RDV de la journée sont planifiés.' : 'Rien à afficher.';
+  const R0 = state.results[state.date]; const nEx = R0 && R0.excluded ? R0.excluded.length : 0;
+  $('#r-un-empty').textContent = !unRows ? 'Rien à afficher.' : nEx ? 'Tous les RDV calculés sont planifiés (voir les RDV écartés en haut de page).' : 'Tous les RDV de la journée sont planifiés.';
   $('#r-un-wrap').hidden = !rows.length;
   $$('#r-unassigned [data-sort]').forEach((b) => {
     const th = b.parentElement;
@@ -979,6 +1011,7 @@ function exportCsv() {
       lines.push([frDate(R.date), a.nom, n, s2hm(s.arrival), rd.idRdv || '', rd.patient, rd.cp, rd.ville, rd.adresse, rdvTypeNom(rd), rdvWindowLabel(rd), Math.round((s.waiting_time || 0) / 60), infoTitle(rd).replace(/\n/g, ' | ')].map(q).join(';'));
     });
   });
+  (R.excluded || []).forEach((rd) => { lines.push([frDate(R.date), 'ÉCARTÉ : ' + (rd.motif || 'adresse introuvable'), '', '', rd.idRdv || '', rd.patient, rd.cp, rd.ville, rd.adresse, rdvTypeNom(rd), rdvWindowLabel(rd), '', infoTitle(rd).replace(/\n/g, ' | ')].map(q).join(';')); });
   R.res.unassigned.forEach((u) => { const rd = R.rdv[u.id - 1]; lines.push([frDate(R.date), 'NON AFFECTÉ', '', '', rd.idRdv || '', rd.patient, rd.cp, rd.ville, rd.adresse, rdvTypeNom(rd), rdvWindowLabel(rd), '', infoTitle(rd).replace(/\n/g, ' | ')].map(q).join(';')); });
   download(`tournees_${R.date}.csv`, '﻿' + lines.join('\r\n'), 'text/csv;charset=utf-8');
 }

@@ -176,3 +176,8 @@ details.infos div{white-space:pre-wrap}
 #t-rdv [data-k=type]{min-width:190px}
 #t-rdv [data-k=amdActuel]{min-width:150px}
 #t-amd [data-k=nom]{min-width:190px}
+
+/* RDV écartés du calcul : bien visibles */
+.card.ecartes{border:2px solid #f3b7b0;background:#fff8f7}
+.card.ecartes h2{color:#7a1a12}
+.card.ecartes h2::before{content:"⚠ ";}

@@ -142,6 +142,11 @@
     </div>
   </div>
   <p class="msg" id="pl-msg" hidden></p>
+  <section class="card ecartes" id="pl-ecartes" hidden>
+    <h2>RDV qui ne pourront pas être optimisés <span class="count" id="c-pl-ecartes"></span></h2>
+    <p class="hint">Toutes dates confondues, sur les antennes incluses dans le test : adresse introuvable ou hors de la carte (PACA / Corse). Ces RDV seront écartés du calcul. Corrigez l'adresse ci-dessous ou dans Isadom, ou traitez-les manuellement.</p>
+    <div class="scroll"><table class="tbl"><thead><tr><th>Date</th><th>RDV</th><th>Patient</th><th>CP</th><th>Ville</th><th>Adresse</th><th>Intervention</th><th>Créneau</th><th>AMD prévu</th><th>Motif</th></tr></thead><tbody id="t-pl-ecartes"></tbody></table></div>
+  </section>
 
   <section class="card">
     <div class="row-between">
@@ -221,6 +226,11 @@
   </div>
 
   <p class="msg" id="r-msg" hidden></p>
+  <section class="card ecartes" id="r-ecartes" hidden>
+    <h2>RDV écartés du calcul <span class="count" id="c-ecartes"></span></h2>
+    <p class="hint">Ces RDV ne figurent dans <b>aucune tournée</b> : à traiter manuellement (adresse à corriger dans Isadom, patient hors zone…).</p>
+    <div class="scroll"><table class="tbl"><thead><tr><th>Date</th><th>RDV</th><th>Patient</th><th>CP</th><th>Ville</th><th>Adresse</th><th>Intervention</th><th>Créneau</th><th>AMD prévu</th><th>Motif</th></tr></thead><tbody id="t-ecartes"></tbody></table></div>
+  </section>
   <div class="noprint" id="r-opt-zone" hidden><button class="btn" id="r-opt" type="button">Optimiser cette journée</button></div>
 
   <div id="r-agenda" class="noprint" hidden></div>
