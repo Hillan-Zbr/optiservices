@@ -576,7 +576,8 @@ function importIsadom(rows, head, name) {
     types.forEach(ensureType);
     const rd = {
       idRdv: id, besoin: get('typebesoin'), date, hDeb, hFin, cren: crenFromIsadom(get('demijournee'), hDeb, hFin),
-      patient: [get('patientnom'), get('patientprenom')].filter(Boolean).join(' ') || 'Patient ' + (get('patientcode') || id),
+      // libellé patient affiché partout (tournées, carte, agenda, exports) : NOM Prénom (code patient Isadom)
+      patient: ([get('patientnom'), get('patientprenom')].filter(Boolean).join(' ') || 'Patient') + (get('patientcode') ? ' (' + get('patientcode') + ')' : ''),
       patientCode: get('patientcode'), cp, ville,
       adresse: [get('numerovoie'), get('typevoie'), get('voie')].filter(Boolean).join(' ').replace(/\s+/g, ' '),
       type: types[0], types, amdActuel: get('amdnom'), amdCode: get('amdcode'), antenne: get('antenne'), secteur: get('secteurlibelle'),
