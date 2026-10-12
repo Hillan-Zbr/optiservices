@@ -347,10 +347,10 @@ function renderPlan() {
   $('#t-pl-ecartes').innerHTML = ecartesRows(probs);
   $('#c-rdv').textContent = `· ${state.rdv.length} au total · ${nDay} le ${frDate(state.date)}` + (nScope < nDay ? ` dont ${nScope} sur les antennes du test` : '');
   // les RDV Isadom de la date sont affichés en tête ; ceux hors date ou hors antennes du test sont grisés
-  const order = state.rdv.map((r, i) => i).sort((a, b) => (state.rdv[a].date === state.date ? 0 : 1) - (state.rdv[b].date === state.date ? 0 : 1) || a - b);
+  const order = state.rdv.map((r, i) => i).filter((i) => rdvMatches(state.rdv[i])).sort((a, b) => (state.rdv[a].date === state.date ? 0 : 1) - (state.rdv[b].date === state.date ? 0 : 1) || a - b);
   $('#t-rdv').innerHTML = state.rdv.length ? order.map((i) => { const r = state.rdv[i]; const isa = !!r.idRdv; return `<tr class="${r.date === state.date && rdvInScope(r) ? '' : 'off'}">
     <td style="width:150px"><input class="mono" ${DATE_ATTRS} data-rdv="${i}" data-k="date" value="${frDate(r.date)}" aria-label="Date"></td>
-    <td><input data-rdv="${i}" data-k="patient" value="${esc(r.patient)}" aria-label="Patient">${isa ? `<div class="hint">${esc(r.antenne || '')} · RDV ${esc(r.idRdv)} · ${esc(r.besoin || '')}${infoTitle(r) ? ` · <span class="info-dot" title="${esc(infoTitle(r))}">infos</span>` : ''}</div>` : ''}</td>
+    <td style="min-width:240px"><input data-rdv="${i}" data-k="patient" value="${esc(r.patient)}" aria-label="Patient">${isa ? `<div class="hint">${esc(r.antenne || '')} · RDV ${esc(r.idRdv)} · ${esc(r.besoin || '')}${infoTitle(r) ? ` · <span class="info-dot" title="${esc(infoTitle(r))}">infos</span>` : ''}</div>` : ''}</td>
     <td style="width:88px"><input class="mono" data-rdv="${i}" data-k="cp" value="${esc(r.cp)}" aria-label="Code postal"></td>
     <td><input data-rdv="${i}" data-k="ville" value="${esc(r.ville)}" aria-label="Ville"></td>
     <td><input data-rdv="${i}" data-k="adresse" value="${esc(r.adresse)}" aria-label="Adresse"></td>
@@ -364,14 +364,38 @@ function renderPlan() {
     <td>${geoBadge(r.geo)}</td>
     <td><button class="icon-btn" data-rdv-del="${i}" type="button" aria-label="Supprimer ce RDV">×</button></td></tr>`; }).join('')
     : '<tr><td colspan="10" class="empty">Aucun RDV. Importez un fichier CSV, ajoutez un RDV ou chargez l\'exemple.</td></tr>';
+  if (state.rdv.length && !order.length) $('#t-rdv').innerHTML = '<tr><td colspan="10" class="empty">Aucun RDV ne correspond à la recherche.</td></tr>';
+  const filtering = Object.values(rdvFilter).some((v) => v && v.trim());
+  if (filtering) $('#c-rdv').textContent += ` · ${order.length} trouvé${order.length > 1 ? 's' : ''}`;
 
   $('#t-csvfmt').innerHTML = CSV_COLS.map((c) => `<tr><td class="mono"><b>${c[0]}</b></td><td>${c[1]}</td><td>${esc(c[2])}</td><td class="mono">${esc(c[3])}</td></tr>`).join('')
     + `<tr><td colspan="4" class="hint">Codes d'intervention actuels : ${types.map((t) => `<code>${esc(t.code)}</code> ${esc(t.nom)}`).join(' · ')}</td></tr>`;
   resetDelZone();
 }
+/* recherche par colonne dans le tableau des RDV : chaque mot saisi doit figurer dans la colonne (sans accents ni casse) */
+const rdvFilter = {};
+const geoText = (g) => (!g ? 'à localiser' : g.horsZone ? 'hors zone carte' : g.none ? 'introuvable' : g.src ? 'isadom ' + (g.src === 'w3w' ? 'w3w what3words' : 'coordonnees') + ' localise' : 'localise ban ' + (g.label || ''));
+const FILTER_TEXT = {
+  date: (r) => frDate(r.date) + ' ' + r.date,
+  patient: (r) => [r.patient, r.patientCode, r.idRdv, r.antenne, r.besoin].join(' '),
+  cp: (r) => r.cp, ville: (r) => r.ville, adresse: (r) => r.adresse,
+  type: (r) => rdvTypes(r).join(' ') + ' ' + rdvTypeNom(r),
+  cren: (r) => [crenOf(r.cren).nom, r.hDeb, r.hFin].join(' '),
+  amd: (r) => [r.amdActuel, r.amdCode].join(' '),
+  geo: (r) => geoText(r.geo)
+};
+function rdvMatches(r) {
+  return Object.entries(rdvFilter).every(([k, v]) => {
+    const terms = norm(v).split(' ').filter(Boolean);
+    if (!terms.length) return true;
+    const txt = norm(FILTER_TEXT[k](r));
+    return terms.every((t) => txt.includes(t));
+  });
+}
 function resetDelZone() {
   $('#del-zone').innerHTML = '<button class="btn2 danger" id="rdv-clear" type="button">Tout supprimer</button>';
 }
+let filterTimer;
 function bindPlan() {
   const v = $('#v-planification');
   v.addEventListener('change', (e) => {
@@ -397,6 +421,11 @@ function bindPlan() {
   });
   v.addEventListener('input', (e) => {
     const el = e.target;
+    if (el.dataset.filter) {
+      rdvFilter[el.dataset.filter] = el.value;
+      clearTimeout(filterTimer); filterTimer = setTimeout(renderPlan, 150);
+      return;
+    }
     if (el.id !== 'pl-date' && el.dataset.k !== 'date') return;
     el.setCustomValidity('');
     if (e.inputType && e.inputType.startsWith('delete')) return;
@@ -417,6 +446,11 @@ function bindPlan() {
     }
     if (t.id === 'rdv-clear-ok') { state.rdv = []; save(); $('#csv-report').hidden = true; renderPlan(); return; }
     if (t.id === 'rdv-clear-no') { resetDelZone(); }
+    if (t.id === 'rdv-filter-clear') {
+      Object.keys(rdvFilter).forEach((k) => delete rdvFilter[k]);
+      $$('[data-filter]').forEach((x) => { x.value = ''; });
+      renderPlan();
+    }
     if (t.id === 'amd-from-isadom') {
       pendingAmd.forEach((a) => { if (!state.amd.some((x) => String(x.code || '') === a.code)) state.amd.push(a); });
       t.replaceWith(document.createTextNode(`→ ${pendingAmd.length} AMD ajouté${pendingAmd.length > 1 ? 's' : ''} (point de départ = antenne de leurs RDV, à vérifier).`));

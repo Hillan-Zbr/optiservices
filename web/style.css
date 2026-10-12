@@ -181,3 +181,8 @@ details.infos div{white-space:pre-wrap}
 .card.ecartes{border:2px solid #f3b7b0;background:#fff8f7}
 .card.ecartes h2{color:#7a1a12}
 .card.ecartes h2::before{content:"⚠ ";}
+
+/* recherche par colonne (tableau des RDV) */
+.tbl tr.filters th{padding:4px 8px 8px;text-transform:none;letter-spacing:0;font-weight:400}
+.tbl tr.filters input{width:100%;min-width:70px;font-size:13px;padding:5px 7px}
+.tbl tr.filters input:not(:placeholder-shown){border-color:var(--accent);background:var(--accent-soft)}

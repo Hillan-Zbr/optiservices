@@ -175,7 +175,8 @@
     <div id="csv-report" hidden></div>
     <div class="scroll">
       <table class="tbl">
-        <thead><tr><th>Date</th><th>Patient (test)</th><th>CP</th><th>Ville</th><th>Adresse</th><th>Intervention</th><th>Demi-journée</th><th>AMD prévu aujourd'hui</th><th>Localisation</th><th></th></tr></thead>
+        <thead><tr><th>Date</th><th>Patient</th><th>CP</th><th>Ville</th><th>Adresse</th><th>Intervention</th><th>Demi-journée</th><th>AMD prévu aujourd'hui</th><th>Localisation</th><th></th></tr>
+          <tr class="filters"><th><input type="search" data-filter="date" placeholder="jj/mm" aria-label="Rechercher : date"></th><th><input type="search" data-filter="patient" placeholder="Rechercher…" aria-label="Rechercher : patient, code, n° RDV"></th><th><input type="search" data-filter="cp" placeholder="CP" aria-label="Rechercher : code postal"></th><th><input type="search" data-filter="ville" placeholder="Rechercher…" aria-label="Rechercher : ville"></th><th><input type="search" data-filter="adresse" placeholder="Rechercher…" aria-label="Rechercher : adresse"></th><th><input type="search" data-filter="type" placeholder="code ou libellé" aria-label="Rechercher : intervention"></th><th><input type="search" data-filter="cren" placeholder="matin, 08:15…" aria-label="Rechercher : créneau"></th><th><input type="search" data-filter="amd" placeholder="nom ou code" aria-label="Rechercher : AMD prévu"></th><th><input type="search" data-filter="geo" placeholder="isadom, hors zone…" aria-label="Rechercher : localisation"></th><th><button class="icon-btn" id="rdv-filter-clear" type="button" title="Effacer les recherches" aria-label="Effacer les recherches">×</button></th></tr></thead>
         <tbody id="t-rdv"></tbody>
       </table>
     </div>
