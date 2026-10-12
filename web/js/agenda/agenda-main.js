@@ -21,15 +21,15 @@ function buildContext(R) {
     return { id: String(i + 1), name: a.nom, antenne: d.id, antenneNom: antenneLabel(d.nom), heuresOuvrees: { debutMin: w[0] / 60, finMin: w[1] / 60 } };
   });
   const jobsById = {};
-  R.rdv.forEach((rd, j) => { jobsById[String(j + 1)] = jobInfo(rd, p); });
+  R.rdv.forEach((rd, j) => { jobsById[String(j + 1)] = jobInfo(rd); });
   return { vehicles, jobsById, params: {} };
 }
-function jobInfo(rd, p) {
-  const t = app.typeOf(rd.type) || { nom: rd.type, o2: false };
-  const c = (p.creneaux && p.creneaux[rd.cren]) || ['00:00', '23:59'];
+function jobInfo(rd) {
+  // fenêtre réelle du RDV (heures Isadom si présentes, sinon créneau paramétré) et types multiples
+  const w = app.rdvWindow(rd);
   return {
-    patient: rd.patient, ville: rd.ville, intervention: t.nom, o2: !!t.o2,
-    creneau: { debutMin: app.hm2s(c[0]) / 60, finMin: app.hm2s(c[1]) / 60, label: app.crenOf(rd.cren).nom + ' ' + c[0] + '–' + c[1] }
+    patient: rd.patient, ville: rd.ville, intervention: app.rdvTypeNom(rd), o2: app.rdvO2(rd),
+    creneau: { debutMin: w[0] / 60, finMin: w[1] / 60, label: app.rdvWindowLabel(rd) }
   };
 }
 

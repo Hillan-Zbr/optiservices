@@ -18,9 +18,37 @@ const COLORS = ['#1d4f91', '#2e8b7a', '#c26a1a', '#7a5bb5', '#b5476a', '#4f7a1f'
 const CRENEAUX = [
   { code: 'matin', nom: 'Matin', badge: 'b-matin' },
   { code: 'mi', nom: 'Mi-journée', badge: 'b-mi' },
-  { code: 'am', nom: 'Après-midi', badge: 'b-am' }
+  { code: 'am', nom: 'Après-midi', badge: 'b-am' },
+  { code: 'jour', nom: 'Journée', badge: 'b-jour' }
 ];
 const crenOf = (c) => CRENEAUX.find((x) => x.code === c) || CRENEAUX[0];
+/* fenêtre de passage d'un RDV (secondes) : heures réelles Isadom si présentes, sinon créneau paramétré */
+function rdvWindow(rd, p = state.params) {
+  if (rd.hDeb && rd.hFin && hm2s(rd.hFin) > hm2s(rd.hDeb)) return [hm2s(rd.hDeb), hm2s(rd.hFin)];
+  const c = p.creneaux[rd.cren] || p.creneaux.jour;
+  return [hm2s(c[0]), hm2s(c[1])];
+}
+function rdvWindowLabel(rd, p = state.params) {
+  const w = rdvWindow(rd, p);
+  return crenOf(rd.cren).nom + ' ' + s2hm(w[0]) + '–' + s2hm(w[1]);
+}
+/* codes d'intervention du RDV (Isadom : plusieurs codes possibles) */
+const rdvTypes = (rd) => (rd.types && rd.types.length ? rd.types : [rd.type]);
+/* durée sur place : un type -> sa durée ; plusieurs -> somme × coefficient paramétré (défaut 80 %) */
+function rdvDuree(rd, p = state.params) {
+  const ds = rdvTypes(rd).map((c) => { const t = typeOf(c); return t ? Number(t.duree) || 0 : 0; });
+  const sum = ds.reduce((a, b) => a + b, 0);
+  return ds.length > 1 ? Math.round(sum * (Number(p.multiCoef) || 100) / 100) : sum;
+}
+const rdvO2 = (rd) => rdvTypes(rd).some((c) => { const t = typeOf(c); return t && t.o2; });
+const rdvTypeNom = (rd) => rdvTypes(rd).map((c) => (typeOf(c) || { nom: c }).nom).join(' + ');
+/* informations d'accès Isadom (AnnAdresse) : affichées au RP à la demande, destinées ensuite à MJ2 */
+function rdvInfos(rd) {
+  const a = rd.acces || {};
+  return [['Tél.', a.tel1], ['Tél. 2', a.tel2], ['Bâtiment', a.batiment], ['Étage', a.etage], ['Porte', a.porte], ['Interphone', a.interphone], ['Infos', a.info]]
+    .filter(([, v]) => v);
+}
+const infoTitle = (rd) => rdvInfos(rd).map(([k, v]) => k + ' : ' + v).join('\n');
 const DISPOS = [
   { code: 'journee', nom: 'Journée' },
   { code: 'matin', nom: 'Matin seulement' },
@@ -30,8 +58,8 @@ const DISPOS = [
 
 /* ---------- valeurs par défaut ---------- */
 const DEFAULT_PARAMS = {
-  creneaux: { matin: ['08:00', '12:00'], mi: ['11:00', '14:00'], am: ['13:30', '17:30'] },
-  pauseDeb: '12:00', pauseFin: '13:30', pauseDuree: 60, stationnement: 10,
+  creneaux: { matin: ['08:00', '12:00'], mi: ['11:00', '14:00'], am: ['13:30', '17:30'], jour: ['08:00', '17:30'] },
+  pauseDeb: '12:00', pauseFin: '13:30', pauseDuree: 60, stationnement: 10, multiCoef: 80,
   ampDeb: '08:00', ampFin: '17:30', hmax: 5, kmmax: 250, coef: 15,
   types: [
     { code: 'LIV', nom: 'Livraison simple', duree: 15, o2: false },
@@ -42,15 +70,29 @@ const DEFAULT_PARAMS = {
     { code: 'CTL', nom: 'Visite de contrôle', duree: 30, o2: false }
   ],
   depots: [
-    { id: 'aub', nom: 'Siège · Aubagne (13)', adr: "Parc d'activités de Napollon, 100 avenue des Templiers, 13676 Aubagne", actif: true },
-    { id: 'sis', nom: 'Antenne · Sisteron (04/05)', adr: 'Parc d’activités de Sisteron Val de Durance, 14 allée des Romarins, 04200 Sisteron', actif: true },
-    { id: 'stj', nom: 'Antenne · Saint-Jeannet (06)', adr: 'ZAC de Saint-Estève, route de la Baronne, 06640 Saint-Jeannet', actif: false },
-    { id: 'cue', nom: 'Antenne · Cuers (83)', adr: 'ZAC des Bousquets, 593 avenue des Bousquets, 83390 Cuers', actif: false },
-    { id: 'cau', nom: 'Antenne · Caumont-sur-Durance (84)', adr: 'ZAC des Balarucs, 15 rue Toussaint Fléchaire, 84510 Caumont-sur-Durance', actif: false },
-    { id: 'bas', nom: 'Antenne · Bastia (20)', adr: 'Zone industrielle Furiani, immeuble Agostini, 20200 Bastia', actif: false },
-    { id: 'aja', nom: 'Antenne · Ajaccio (20)', adr: '13 avenue Maréchal Juin, résidence Les Fleurs, 20090 Ajaccio', actif: false }
+    { id: 'aub', nom: 'Siège · Aubagne (13)', adr: "Parc d'activités de Napollon, 100 avenue des Templiers, 13676 Aubagne", actif: true, isadom: 'ARARD 13' },
+    { id: 'sis', nom: 'Antenne · Sisteron (04/05)', adr: 'Parc d’activités de Sisteron Val de Durance, 14 allée des Romarins, 04200 Sisteron', actif: true, isadom: 'ARARD 04/05' },
+    { id: 'stj', nom: 'Antenne · Saint-Jeannet (06)', adr: 'ZAC de Saint-Estève, route de la Baronne, 06640 Saint-Jeannet', actif: false, isadom: 'ARARD 06' },
+    { id: 'cue', nom: 'Antenne · Cuers (83)', adr: 'ZAC des Bousquets, 593 avenue des Bousquets, 83390 Cuers', actif: false, isadom: 'ARARD 83' },
+    { id: 'cau', nom: 'Antenne · Caumont-sur-Durance (84)', adr: 'ZAC des Balarucs, 15 rue Toussaint Fléchaire, 84510 Caumont-sur-Durance', actif: false, isadom: 'ARARD 84' },
+    { id: 'bas', nom: 'Antenne · Bastia (20)', adr: 'Zone industrielle Furiani, immeuble Agostini, 20200 Bastia', actif: false, isadom: 'ARARD 2B' },
+    { id: 'aja', nom: 'Antenne · Ajaccio (20)', adr: '13 avenue Maréchal Juin, résidence Les Fleurs, 20090 Ajaccio', actif: false, isadom: 'ARARD 2A' }
   ]
 };
+/* types de visite Isadom (OrdRendezVousTypeVisite.sFKTypeVisite) : durées estimées par le métier (12/10/2026).
+   « Aléatoire » -> 20 min. O2 liquide : 14 min par cuve, 1 cuve par défaut. Code absent de cette liste -> 20 min. */
+const DUREE_TYPE_DEFAUT = 20;
+const ISADOM_TYPES = [
+  ['AJT', 'Ajout de matériel', 10], ['CLC', 'Complément de liv. consommables', 10], ['CD', 'Contrôle dossier', 5],
+  ['DES', 'Désappareillage', 20], ['ECH', 'Échange de dispositif médical', 10], ['EQ', 'Enquête O2', 5],
+  ['LD', 'Livraison diabétologie', 10], ['MAD 1', 'Livraison MAD 1 : ret / petit MAD / objets / inconnu', 10],
+  ['MAD 2', 'Livraison MAD 2 : gros MAD (hors lit)', 20], ['MAD 3', 'Livraison MAD 3 : combiné gros + petit MAD', 30],
+  ['MAD 4', 'Livraison MAD 4 : livr/ret lit et combiné lit', 40], ['MAD 5', 'Livraison MAD 5 : vérification matelas à air', 50],
+  ['LNF', 'Livraison non effectuée avec déplacement', 5], ['LNF1', 'Livraison non effectuée sans déplacement', 0],
+  ['LIN', 'Livraison nutrition', 10], ['O2G', 'Livraison O2 gazeux', 10], ['OGL', 'Livraison O2 gazeux et liquide', 24],
+  ['LIVO2L', 'Livraison O2 liquide (14 min/cuve)', 14], ['O2L', 'Livraison O2 liquide (14 min/cuve)', 14],
+  ['LP', 'Livraison perfusion', 10], ['M', 'Maintenance', 20], ['RET', 'Retrait partiel de dispositif', 10]
+];
 const DEFAULT_AMD = [
   { nom: 'GALLIANO Jean-Marc', depot: 'aub', dispo: 'journee', hmax: 5, kmmax: 250, o2: false },
   { nom: 'SI-MOHAMMED Bounouar', depot: 'aub', dispo: 'journee', hmax: 5, kmmax: 250, o2: false },
@@ -89,8 +131,17 @@ function load() {
   try { s = JSON.parse(localStorage.getItem(KEY)); } catch (e) { s = null; }
   state = Object.assign({ params: clone(DEFAULT_PARAMS), amd: clone(DEFAULT_AMD), rdv: [], results: {}, geo: {}, date: null }, s || {});
   state.params = Object.assign(clone(DEFAULT_PARAMS), state.params);
+  migrateParams(state.params);
   // ancien format : un seul résultat
   if (state.result) { state.results[state.result.date] = state.result; delete state.result; }
+}
+/* complète une configuration enregistrée avant l'import Isadom (créneau Journée, antennes Isadom, coefficient multi-types) */
+function migrateParams(p) {
+  p.creneaux = Object.assign(clone(DEFAULT_PARAMS.creneaux), p.creneaux);
+  if (p.multiCoef == null) p.multiCoef = DEFAULT_PARAMS.multiCoef;
+  p.depots.forEach((d) => {
+    if (d.isadom == null) { const def = DEFAULT_PARAMS.depots.find((x) => x.id === d.id); d.isadom = def ? def.isadom : ''; }
+  });
 }
 let saveTimer;
 function save(flag) {
@@ -109,6 +160,10 @@ function save(flag) {
 }
 const typeOf = (code) => state.params.types.find((t) => t.code === code);
 const depotOf = (id) => state.params.depots.find((d) => d.id === id);
+/* point de départ correspondant à l'antenne Isadom d'un RDV (libellé AnnAnnuaire.sNom, ex. « ARARD 13 ») */
+const depotOfAntenne = (antenne) => state.params.depots.find((d) => d.isadom && norm(d.isadom) === norm(antenne));
+/* un RDV Isadom n'est optimisé que si son antenne correspond à un point de départ inclus dans le test */
+const rdvInScope = (rd) => { if (!rd.antenne) return true; const d = depotOfAntenne(rd.antenne); return !!(d && d.actif); };
 
 /* ---------- navigation ---------- */
 const VIEWS = ['parametres', 'trajet', 'planification', 'resultat'];
@@ -160,6 +215,7 @@ async function pool(items, fn, n = 5) {
 function geoBadge(g) {
   if (!g) return '<span class="geo no">À localiser</span>';
   if (g.none) return '<span class="geo ko">Introuvable</span>';
+  if (g.src) return `<span class="geo ok" title="${esc(g.label)}">Isadom${g.src === 'w3w' ? ' (W3W)' : ''}</span>`;
   const cls = g.score >= 0.6 ? 'ok' : 'low';
   return `<span class="geo ${cls}" title="${esc(g.label)} · score ${g.score.toFixed(2)}">${cls === 'ok' ? 'Localisé' : 'À vérifier'}</span>`;
 }
@@ -181,6 +237,7 @@ function renderParams() {
     <div class="row-between"><b>${esc(d.nom)}</b>
       <label><input type="checkbox" data-depot="${i}" data-k="actif" ${d.actif ? 'checked' : ''}> Inclus dans le test</label></div>
     <input data-depot="${i}" data-k="adr" value="${esc(d.adr)}" aria-label="Adresse ${esc(d.nom)}">
+    <label class="hint">Antenne Isadom <input class="mono" data-depot="${i}" data-k="isadom" value="${esc(d.isadom)}" placeholder="ex. ARARD 13" aria-label="Libellé de l'antenne dans Isadom pour ${esc(d.nom)}"></label>
     <div>${geoBadge(d.geo)} ${d.geo && !d.geo.none ? '<span class="hint">' + esc(d.geo.label) + '</span>' : ''}</div></div>`).join('');
 }
 function bindParams() {
@@ -196,7 +253,9 @@ function bindParams() {
       t[el.dataset.k] = el.type === 'checkbox' ? el.checked : el.type === 'number' ? Number(el.value) : (el.dataset.k === 'code' ? el.value.trim().toUpperCase() : el.value);
     } else if (el.dataset.depot) {
       const d = p.depots[Number(el.dataset.depot)];
-      if (el.dataset.k === 'actif') d.actif = el.checked; else { d.adr = el.value; delete d.geo; }
+      if (el.dataset.k === 'actif') d.actif = el.checked;
+      else if (el.dataset.k === 'isadom') d.isadom = el.value.trim();
+      else { d.adr = el.value; delete d.geo; }
       renderParams();
     } else return;
     save(true);
@@ -220,7 +279,7 @@ function bindParams() {
     const f = e.target.files[0]; if (!f) return;
     try {
       const j = JSON.parse(await f.text());
-      if (j.params) state.params = Object.assign(clone(DEFAULT_PARAMS), j.params);
+      if (j.params) { state.params = Object.assign(clone(DEFAULT_PARAMS), j.params); migrateParams(state.params); }
       if (Array.isArray(j.amd)) state.amd = j.amd;
       save(true); renderParams();
     } catch (err) { window.console.error(err); }
@@ -250,6 +309,7 @@ function renderPlan() {
   $('#t-amd').innerHTML = state.amd.map((a, i) => {
     const d = depotOf(a.depot); const off = a.dispo === 'absent' || !d || !d.actif;
     return `<tr class="${off ? 'off' : ''}">
+    <td style="width:90px"><input class="mono" data-amd="${i}" data-k="code" value="${esc(a.code || '')}" placeholder="—" aria-label="Code Isadom de l'AMD"></td>
     <td><input data-amd="${i}" data-k="nom" value="${esc(a.nom)}" aria-label="Nom de l'AMD"></td>
     <td><select data-amd="${i}" data-k="depot" aria-label="Point de départ">${deps.map((x) => `<option value="${x.id}" ${x.id === a.depot ? 'selected' : ''}>${esc(x.nom)}${x.actif ? '' : ' (hors test)'}</option>`).join('')}</select></td>
     <td><select data-amd="${i}" data-k="dispo" aria-label="Disponibilité">${DISPOS.map((x) => `<option value="${x.code}" ${x.code === a.dispo ? 'selected' : ''}>${x.nom}</option>`).join('')}</select></td>
@@ -260,19 +320,26 @@ function renderPlan() {
   }).join('');
 
   const types = state.params.types;
-  const nDay = state.rdv.filter((r) => r.date === state.date).length;
-  $('#c-rdv').textContent = `· ${state.rdv.length} au total · ${nDay} le ${frDate(state.date)}`;
-  $('#t-rdv').innerHTML = state.rdv.length ? state.rdv.map((r, i) => `<tr class="${r.date === state.date ? '' : 'off'}">
+  const dayAll = state.rdv.filter((r) => r.date === state.date);
+  const nDay = dayAll.length; const nScope = dayAll.filter(rdvInScope).length;
+  $('#c-rdv').textContent = `· ${state.rdv.length} au total · ${nDay} le ${frDate(state.date)}` + (nScope < nDay ? ` dont ${nScope} sur les antennes du test` : '');
+  // les RDV Isadom de la date sont affichés en tête ; ceux hors date ou hors antennes du test sont grisés
+  const order = state.rdv.map((r, i) => i).sort((a, b) => (state.rdv[a].date === state.date ? 0 : 1) - (state.rdv[b].date === state.date ? 0 : 1) || a - b);
+  $('#t-rdv').innerHTML = state.rdv.length ? order.map((i) => { const r = state.rdv[i]; const isa = !!r.idRdv; return `<tr class="${r.date === state.date && rdvInScope(r) ? '' : 'off'}">
     <td style="width:150px"><input class="mono" ${DATE_ATTRS} data-rdv="${i}" data-k="date" value="${frDate(r.date)}" aria-label="Date"></td>
-    <td><input data-rdv="${i}" data-k="patient" value="${esc(r.patient)}" aria-label="Patient"></td>
+    <td><input data-rdv="${i}" data-k="patient" value="${esc(r.patient)}" aria-label="Patient">${isa ? `<div class="hint">${esc(r.antenne || '')} · RDV ${esc(r.idRdv)} · ${esc(r.besoin || '')}${infoTitle(r) ? ` · <span class="info-dot" title="${esc(infoTitle(r))}">infos</span>` : ''}</div>` : ''}</td>
     <td style="width:88px"><input class="mono" data-rdv="${i}" data-k="cp" value="${esc(r.cp)}" aria-label="Code postal"></td>
     <td><input data-rdv="${i}" data-k="ville" value="${esc(r.ville)}" aria-label="Ville"></td>
     <td><input data-rdv="${i}" data-k="adresse" value="${esc(r.adresse)}" aria-label="Adresse"></td>
-    <td><select data-rdv="${i}" data-k="type" aria-label="Intervention">${types.map((t) => `<option value="${esc(t.code)}" ${t.code === r.type ? 'selected' : ''}>${esc(t.nom)}</option>`).join('')}${typeOf(r.type) ? '' : `<option selected value="${esc(r.type)}">${esc(r.type)} (inconnu)</option>`}</select></td>
-    <td style="width:130px"><select data-rdv="${i}" data-k="cren" aria-label="Demi-journée">${CRENEAUX.map((c) => `<option value="${c.code}" ${c.code === r.cren ? 'selected' : ''}>${c.nom}</option>`).join('')}</select></td>
-    <td><input data-rdv="${i}" data-k="amdActuel" value="${esc(r.amdActuel)}" aria-label="AMD prévu"></td>
+    <td>${r.types && r.types.length > 1
+      ? `<span class="mono" title="${esc(rdvTypeNom(r))}">${esc(r.types.join(' + '))}</span><div class="hint">${rdvDuree(r)} min</div>`
+      : `<select data-rdv="${i}" data-k="type" aria-label="Intervention">${types.map((t) => `<option value="${esc(t.code)}" ${t.code === r.type ? 'selected' : ''}>${esc(t.nom)}</option>`).join('')}${typeOf(r.type) ? '' : `<option selected value="${esc(r.type)}">${esc(r.type)} (inconnu)</option>`}</select>`}</td>
+    <td style="width:130px">${isa && r.hDeb
+      ? `<span class="badge ${crenOf(r.cren).badge}">${crenOf(r.cren).nom}</span><div class="hint mono">${esc(r.hDeb)}–${esc(r.hFin)}</div>`
+      : `<select data-rdv="${i}" data-k="cren" aria-label="Demi-journée">${CRENEAUX.map((c) => `<option value="${c.code}" ${c.code === r.cren ? 'selected' : ''}>${c.nom}</option>`).join('')}</select>`}</td>
+    <td><input data-rdv="${i}" data-k="amdActuel" value="${esc(r.amdActuel)}" aria-label="AMD prévu">${r.amdCode ? `<div class="hint mono">code ${esc(r.amdCode)}</div>` : ''}</td>
     <td>${geoBadge(r.geo)}</td>
-    <td><button class="icon-btn" data-rdv-del="${i}" type="button" aria-label="Supprimer ce RDV">×</button></td></tr>`).join('')
+    <td><button class="icon-btn" data-rdv-del="${i}" type="button" aria-label="Supprimer ce RDV">×</button></td></tr>`; }).join('')
     : '<tr><td colspan="10" class="empty">Aucun RDV. Importez un fichier CSV, ajoutez un RDV ou chargez l\'exemple.</td></tr>';
 
   $('#t-csvfmt').innerHTML = CSV_COLS.map((c) => `<tr><td class="mono"><b>${c[0]}</b></td><td>${c[1]}</td><td>${esc(c[2])}</td><td class="mono">${esc(c[3])}</td></tr>`).join('')
@@ -327,6 +394,11 @@ function bindPlan() {
     }
     if (t.id === 'rdv-clear-ok') { state.rdv = []; save(); $('#csv-report').hidden = true; renderPlan(); return; }
     if (t.id === 'rdv-clear-no') { resetDelZone(); }
+    if (t.id === 'amd-from-isadom') {
+      pendingAmd.forEach((a) => { if (!state.amd.some((x) => String(x.code || '') === a.code)) state.amd.push(a); });
+      t.replaceWith(document.createTextNode(`→ ${pendingAmd.length} AMD ajouté${pendingAmd.length > 1 ? 's' : ''} (point de départ = antenne de leurs RDV, à vérifier).`));
+      pendingAmd = []; save(); renderPlan();
+    }
   });
   $('#amd-add').addEventListener('click', () => {
     const p = state.params; const d = p.depots.find((x) => x.actif) || p.depots[0];
@@ -393,6 +465,7 @@ function importCsv(text, name) {
   const rep = $('#csv-report');
   if (rows.length < 2) { rep.className = 'warn'; rep.hidden = false; rep.innerHTML = 'Fichier vide ou sans ligne de données.'; return; }
   const head = rows[0].map((h) => norm(h).replace(/ /g, '_'));
+  if (head.includes('idrdv') && head.includes('daterdv')) { importIsadom(rows, head, name); return; }
   const idx = {}; CSV_COLS.forEach(([c]) => { idx[c] = head.indexOf(c); });
   const missing = CSV_COLS.filter((c) => c[1] === 'Oui' && idx[c[0]] < 0).map((c) => c[0]);
   if (missing.length) {
@@ -424,6 +497,118 @@ function importCsv(text, name) {
   save(); renderPlan();
 }
 
+let pendingAmd = [];
+/* ---------- import de l'export Isadom (requête RDV v7 : IdRdv;TypeBesoin;DateRdv;HeureDebut;…) ---------- */
+const ISADOM_REQ = ['idrdv', 'daterdv', 'cp', 'ville'];
+const hhmm = (v) => { const m = String(v || '').match(/(\d{1,2}):(\d{2})/); return m ? m[1].padStart(2, '0') + ':' + m[2] : ''; };
+function crenFromIsadom(label, hDeb, hFin) {
+  const n = norm(label);
+  if (n === 'matin') return 'matin';
+  if (n.startsWith('apres')) return 'am';
+  if (n.startsWith('journee')) return 'jour';
+  if (hDeb && hFin) { if (hm2s(hFin) <= hm2s('13:00')) return 'matin'; if (hm2s(hDeb) >= hm2s('12:00')) return 'am'; }
+  return 'jour';
+}
+/* coordonnées Isadom : W3W figées > lat/lon Isadom > W3W non figées ; sinon géocodage BAN à l'optimisation */
+function isadomGeo(get) {
+  const num = (v) => { const x = parseFloat(String(v).replace(',', '.')); return Number.isFinite(x) ? x : null; };
+  const pt = (la, lo) => { const lat = num(get(la)), lon = num(get(lo)); return lat != null && lon != null && lat > 41 && lat < 46 && lon > -5.5 && lon < 10 ? { lat, lon } : null; };
+  const w = pt('w3wlat', 'w3wlon'), c = pt('lat', 'lon');
+  if (w && get('w3wfigee') === '1') return Object.assign(w, { label: 'What3Words figé (Isadom)', score: 1, src: 'w3w' });
+  if (c) return Object.assign(c, { label: 'Coordonnées Isadom' + (get('geofigee') === '1' ? ' (figées)' : ''), score: 1, src: 'isadom' });
+  if (w) return Object.assign(w, { label: 'What3Words (Isadom)', score: 1, src: 'w3w' });
+  return null;
+}
+function importIsadom(rows, head, name) {
+  const rep = $('#csv-report'); const p = state.params;
+  const col = (c) => head.indexOf(c);
+  const missing = ISADOM_REQ.filter((c) => col(c) < 0);
+  if (missing.length) {
+    rep.className = 'warn'; rep.hidden = false;
+    rep.innerHTML = `Export Isadom incomplet : colonnes absentes <b>${missing.map(esc).join(', ')}</b>. Relancez la requête RDV v7.`;
+    return;
+  }
+  const created = [];
+  const ensureType = (code) => {
+    if (typeOf(code)) return;
+    const def = ISADOM_TYPES.find((t) => t[0] === code);
+    const t = { code, nom: def ? def[1] : code + ' (Isadom)', duree: def ? def[2] : DUREE_TYPE_DEFAUT, o2: false };
+    p.types.push(t); created.push(t);
+  };
+  const errs = []; const warns = []; const seen = new Map(); const dates = new Set();
+  rows.slice(1).forEach((r, k) => {
+    const get = (c) => { const i = col(c); const v = i >= 0 ? (r[i] || '').trim() : ''; return /^null$/i.test(v) ? '' : v; };
+    const line = k + 2; const pb = [];
+    const id = get('idrdv'); if (!id) pb.push('IdRdv vide');
+    const date = parseDate(get('daterdv').slice(0, 10)); if (!date) pb.push('date invalide « ' + get('daterdv') + ' »');
+    let cp = get('cp').replace(/\s/g, ''); if (/^\d{4}$/.test(cp)) cp = '0' + cp;
+    if (!/^\d{5}$/.test(cp)) pb.push('code postal invalide « ' + get('cp') + ' »');
+    const ville = get('ville'); if (!ville) pb.push('ville vide');
+    if (pb.length) { errs.push(`Ligne ${line} : ${pb.join(', ')}`); return; }
+    const hDeb = hhmm(get('heuredebut')), hFin = hhmm(get('heurefin'));
+    if (!hDeb || !hFin) warns.push(`RDV ${id} (${frDate(date)}) : heures non renseignées, créneau « Journée » appliqué`);
+    const types = [...new Set(get('typevisite').split(',').map((s) => s.trim().toUpperCase()).filter(Boolean))];
+    if (!types.length) { types.push('INCONNU'); warns.push(`RDV ${id} (${frDate(date)}) : aucun type de visite, durée par défaut appliquée`); }
+    types.forEach(ensureType);
+    const rd = {
+      idRdv: id, besoin: get('typebesoin'), date, hDeb, hFin, cren: crenFromIsadom(get('demijournee'), hDeb, hFin),
+      patient: [get('patientnom'), get('patientprenom')].filter(Boolean).join(' ') || 'Patient ' + (get('patientcode') || id),
+      patientCode: get('patientcode'), cp, ville,
+      adresse: [get('numerovoie'), get('typevoie'), get('voie')].filter(Boolean).join(' ').replace(/\s+/g, ' '),
+      type: types[0], types, amdActuel: get('amdnom'), amdCode: get('amdcode'), antenne: get('antenne'), secteur: get('secteurlibelle'),
+      acces: { tel1: get('telfixe'), tel2: get('telautre'), batiment: get('batiment'), etage: get('etage'), porte: get('porte'), interphone: get('interphone'), info: get('infoadresse') }
+    };
+    const g = isadomGeo(get); if (g) rd.geo = g;
+    seen.set(id, rd); dates.add(date);
+  });
+  // fusion : un RDV déjà connu (même IdRdv) est remplacé ; un RDV Isadom d'une date couverte par le fichier
+  // mais absent du fichier est retiré (annulé ou déplacé dans Isadom). Les RDV saisis à la main sont conservés.
+  let updated = 0, removed = 0;
+  const keep = state.rdv.filter((r) => {
+    if (r.idRdv && seen.has(r.idRdv)) { updated++; return false; }
+    if (r.idRdv && dates.has(r.date)) { removed++; return false; }
+    return true;
+  });
+  state.rdv = keep.concat([...seen.values()]);
+  const added = seen.size - updated;
+  // AMD : renseigne le code Isadom des AMD reconnus par leur nom ; liste ceux qui sont absents
+  const amdSeen = new Map(); seen.forEach((rd) => { if (rd.amdCode) amdSeen.set(rd.amdCode, rd.amdActuel); });
+  amdSeen.forEach((nom, code) => {
+    if (state.amd.some((a) => String(a.code || '').trim() === code)) return;
+    const cand = state.amd.filter((a) => !a.code && sameAmd(nom, a));
+    if (cand.length === 1) cand[0].code = code;
+  });
+  const unknownAmd = [...amdSeen].filter(([code]) => !state.amd.some((a) => String(a.code || '').trim() === code));
+  // AMD proposés à l'ajout : point de départ = antenne la plus fréquente de leurs RDV
+  pendingAmd = unknownAmd.map(([code, nom]) => {
+    const cnt = new Map();
+    seen.forEach((rd) => { if (rd.amdCode === code) { const d = depotOfAntenne(rd.antenne); if (d) cnt.set(d.id, (cnt.get(d.id) || 0) + 1); } });
+    const depot = [...cnt].sort((a, b) => b[1] - a[1])[0];
+    return { code, nom, depot: depot ? depot[0] : (p.depots.find((x) => x.actif) || p.depots[0]).id, dispo: 'journee', hmax: p.hmax, kmmax: p.kmmax, o2: false };
+  });
+  const outScope = [...seen.values()].filter((rd) => !rdvInScope(rd)).length;
+  const noGeo = [...seen.values()].filter((rd) => !rd.geo).length;
+  const multi = [...seen.values()].filter((rd) => rd.types.length > 1).length;
+
+  const li = (x) => '<li>' + x + '</li>';
+  const info = [
+    `${added} nouveau${added > 1 ? 'x' : ''}, ${updated} mis à jour, ${removed} retiré${removed > 1 ? 's' : ''} (absent${removed > 1 ? 's' : ''} du nouvel export)`,
+    `${seen.size - noGeo} localisé${seen.size - noGeo > 1 ? 's' : ''} par les coordonnées Isadom · ${noGeo} à géocoder par l'adresse`,
+    `${multi} RDV à plusieurs types de visite : durée = somme × ${p.multiCoef} %`,
+    outScope ? `${outScope} RDV sur des antennes hors test (non optimisés tant que l'antenne n'est pas incluse dans les paramètres)` : '',
+    created.length ? `${created.length} type${created.length > 1 ? 's' : ''} de visite ajouté${created.length > 1 ? 's' : ''} aux paramètres : ${created.map((t) => `<code>${esc(t.code)}</code> ${t.duree} min`).join(', ')}` : '',
+    unknownAmd.length ? `${unknownAmd.length} AMD absent${unknownAmd.length > 1 ? 's' : ''} de la liste (comparaison impossible pour leurs RDV) : ${unknownAmd.map(([c, n]) => esc(n) + ' <span class="mono">(' + esc(c) + ')</span>').join(', ')} <button class="btn2" id="amd-from-isadom" type="button">Ajouter ${unknownAmd.length > 1 ? 'ces AMD' : 'cet AMD'}</button>` : ''
+  ].filter(Boolean);
+  const all = errs.concat(warns);
+  save();
+  rep.hidden = false; rep.className = errs.length ? 'warn' : 'ok';
+  rep.innerHTML = `<b>${esc(name)}</b> (export Isadom) : ${seen.size} RDV importé${seen.size > 1 ? 's' : ''} sur ${dates.size} jour${dates.size > 1 ? 's' : ''}${errs.length ? `, ${errs.length} ligne${errs.length > 1 ? 's' : ''} ignorée${errs.length > 1 ? 's' : ''}` : ''}.`
+    + '<ul>' + info.map(li).join('') + '</ul>'
+    + (all.length ? '<ul>' + all.slice(0, 30).map((x) => li(esc(x))).join('') + (all.length > 30 ? li('…') : '') + '</ul>' : '');
+  if (seen.size && !state.rdv.some((r) => r.date === state.date)) state.date = [...dates].sort()[0];
+  save(); renderPlan();
+}
+
 /* ---------- optimisation ---------- */
 function vehicleWindow(a, p) {
   if (a.dispo === 'matin') return [hm2s(p.ampDeb), hm2s(p.pauseDeb)];
@@ -431,13 +616,15 @@ function vehicleWindow(a, p) {
   return [hm2s(p.ampDeb), hm2s(p.ampFin)];
 }
 const sameAmd = (name, a) => { const n = norm(name); const m = norm(a.nom); return !!n && (m === n || m.startsWith(n + ' ') || m.includes(n)); };
+/* AMD actuel d'un RDV : par code Isadom quand les deux sont connus, sinon par le nom */
+const amdMatch = (rd, a) => (rd.amdCode && a.code ? String(a.code).trim() === String(rd.amdCode).trim() : sameAmd(rd.amdActuel, a));
 
 async function optimize() {
   const onResult = location.hash === '#resultat';
   const msg = onResult ? '#r-msg' : '#pl-msg';
   const btn = onResult ? $('#r-opt') : $('#pl-go'); const p = state.params;
-  const day = state.rdv.filter((r) => r.date === state.date);
-  if (!day.length) { alertMsg(msg, `Aucun RDV le ${frDate(state.date)}.`, 'err'); return; }
+  const day = state.rdv.filter((r) => r.date === state.date && rdvInScope(r));
+  if (!day.length) { alertMsg(msg, `Aucun RDV le ${frDate(state.date)} sur les antennes incluses dans le test.`, 'err'); return; }
   const amds = state.amd.filter((a) => a.dispo !== 'absent' && depotOf(a.depot) && depotOf(a.depot).actif);
   if (!amds.length) { alertMsg(msg, 'Aucun AMD disponible partant d’un point de départ inclus dans le test.', 'err'); return; }
   if (btn) btn.disabled = true;
@@ -451,7 +638,7 @@ async function optimize() {
     if (badDep.length) throw new Error('Adresse introuvable pour : ' + [...new Set(badDep.map((a) => depotOf(a.depot).nom))].join(', ') + '. Corrigez-la dans les paramètres.');
     const jobsR = day.filter((r) => r.geo && !r.geo.none);
     const excluded = day.filter((r) => !r.geo || r.geo.none);
-    const badType = jobsR.filter((r) => !typeOf(r.type));
+    const badType = jobsR.filter((r) => rdvTypes(r).some((c) => !typeOf(c)));
     if (badType.length) throw new Error('Type d’intervention inconnu pour ' + badType.map((r) => esc(r.patient)).join(', '));
 
     alertMsg(msg, 'Calcul des tournées…');
@@ -471,18 +658,17 @@ async function optimize() {
       return v;
     });
     const jobs = jobsR.map((r, j) => {
-      const t = typeOf(r.type); const c = p.creneaux[r.cren];
       return {
         id: j + 1, description: r.patient, location: [r.geo.lon, r.geo.lat],
-        setup: p.stationnement * 60, service: t.duree * 60,
-        time_windows: [[hm2s(c[0]), hm2s(c[1])]], skills: t.o2 ? [1] : []
+        setup: p.stationnement * 60, service: rdvDuree(r, p) * 60,
+        time_windows: [rdvWindow(r, p)], skills: rdvO2(r) ? [1] : []
       };
     });
     const req = { vehicles, jobs, options: { g: true } };
     const res = await callVroom(req);
 
     let cmp = null, resAct = null;
-    const withCur = jobsR.map((r, j) => ({ j, a: amds.findIndex((a) => sameAmd(r.amdActuel, a)) })).filter((x) => x.a >= 0);
+    const withCur = jobsR.map((r, j) => ({ j, a: amds.findIndex((a) => amdMatch(r, a)) })).filter((x) => x.a >= 0);
     if (withCur.length) {
       const creq = clone(req); creq.options = { g: false };
       creq.vehicles.forEach((v, i) => { v.skills = v.skills.concat([100 + i]); });
@@ -610,11 +796,12 @@ function renderResult() {
       if (s.type === 'end') return `<li class="aux"><span class="n">⌂</span><span class="t">${s2hm(s.arrival)}</span><span>Retour ${esc(d.nom)}</span><span></span></li>`;
       if (s.type === 'break') return `<li class="aux"><span class="n">‖</span><span class="t">${s2hm(s.arrival + (s.waiting_time || 0))}</span><span>Pause déjeuner · ${Math.round(s.service / 60)} min</span><span></span></li>`;
       if (s.type !== 'job') return '';
-      n++; const rd = R.rdv[s.job - 1]; const t = typeOf(rd.type) || { nom: rd.type }; const c = crenOf(rd.cren);
+      n++; const rd = R.rdv[s.job - 1]; const c = crenOf(rd.cren);
       const wait = s.waiting_time > 60 ? ` · attente ${Math.round(s.waiting_time / 60)} min` : '';
+      const inf = infoTitle(rd);
       return `<li class="pick" data-job="${s.job}" tabindex="0" title="Voir sur la carte"><span class="n" style="background:${col}">${n}</span><span class="t">${s2hm(s.arrival)}</span>
-        <span><b>${esc(rd.patient)}</b> <span class="w">· ${esc(rd.ville)} · ${esc(t.nom)}${rd.adresse ? ' · ' + esc(rd.adresse) : ''}${wait}</span></span>
-        <span class="badge ${c.badge}">${c.nom}</span></li>`;
+        <span><b>${esc(rd.patient)}</b> <span class="w">· ${esc(rd.ville)} · ${esc(rdvTypeNom(rd))}${rd.adresse ? ' · ' + esc(rd.adresse) : ''}${wait}</span>${inf ? `<details class="infos"><summary>Infos d'accès</summary>${rdvInfos(rd).map(([k, v]) => `<div><span class="hint">${esc(k)}</span> ${esc(v)}</div>`).join('')}</details>` : ''}</span>
+        <span class="badge ${c.badge}" title="${esc(rdvWindowLabel(rd))}">${rd.hDeb ? esc(rd.hDeb + '–' + rd.hFin) : c.nom}</span></li>`;
     }).join('');
     return `<section class="route"><div class="route-h"><div class="who"><span class="dot" style="background:${col}"></span><b>${esc(a.nom)}</b><span>${esc(d.nom)}</span></div>
       <div class="tot mono"><span>${jobsN} RDV</span><span class="${kmOver ? 'over' : ''}">${fmtKm(r.distance)}${a.kmmax ? ' / ' + a.kmmax + ' km' : ''}</span><span class="${hOver ? 'over' : ''}">${fmtDur(r.duration)}${a.hmax ? ' / ' + a.hmax + ' h' : ''} conduite</span><span>${s2hm(start.arrival)}–${s2hm(end.arrival)}</span></div></div>
@@ -623,10 +810,9 @@ function renderResult() {
 
   // non affectés
   const why = (rd) => {
-    const t = typeOf(rd.type);
-    if (t && t.o2 && !R.amds.some((a) => a.o2)) return 'aucun AMD habilité O2 disponible';
-    const c = state.params.creneaux[rd.cren];
-    if (!R.amds.some((a) => { const w = vehicleWindow(a, state.params); return w[0] < hm2s(c[1]) && w[1] > hm2s(c[0]); })) return 'aucun AMD disponible sur ce créneau';
+    if (rdvO2(rd) && !R.amds.some((a) => a.o2)) return 'aucun AMD habilité O2 disponible';
+    const c = rdvWindow(rd);
+    if (!R.amds.some((a) => { const w = vehicleWindow(a, state.params); return w[0] < c[1] && w[1] > c[0]; })) return 'aucun AMD disponible sur ce créneau';
     return 'créneau, heures ou km max trop serrés';
   };
   unRows = res.unassigned.map((u) => ({ rd: R.rdv[u.id - 1], job: u.id, why: why(R.rdv[u.id - 1]) })).concat(R.excluded.map((rd) => ({ rd, why: 'adresse introuvable' })));
@@ -639,7 +825,7 @@ let unRows = null;
 const unSort = { key: 'ville', dir: 1 };
 const unVal = {
   date: (x) => x.rd.date, patient: (x) => x.rd.patient, cp: (x) => x.rd.cp, ville: (x) => x.rd.ville, adresse: (x) => x.rd.adresse,
-  type: (x) => (typeOf(x.rd.type) || { nom: x.rd.type }).nom, cren: (x) => CRENEAUX.indexOf(crenOf(x.rd.cren)),
+  type: (x) => rdvTypeNom(x.rd), cren: (x) => rdvWindow(x.rd)[0],
   amd: (x) => x.rd.amdActuel, why: (x) => x.why
 };
 function renderUnassigned() {
@@ -659,9 +845,9 @@ function renderUnassigned() {
     return c * unSort.dir || String(a.rd.ville ?? '').localeCompare(String(b.rd.ville ?? ''), 'fr');
   });
   $('#t-unassigned').innerHTML = sorted.map(({ rd, job, why }) => {
-    const t = typeOf(rd.type) || { nom: rd.type }; const c = crenOf(rd.cren);
+    const c = crenOf(rd.cren);
     return `<tr${job ? ` class="pick" data-job="${job}" tabindex="0" title="Voir sur la carte"` : ''}><td class="mono">${esc(frDate(rd.date))}</td><td><b>${esc(rd.patient)}</b></td><td class="mono">${esc(rd.cp)}</td><td>${esc(rd.ville || '?')}</td><td>${esc(rd.adresse)}</td>
-      <td>${esc(t.nom)}</td><td><span class="badge ${c.badge}">${c.nom}</span></td><td>${esc(rd.amdActuel)}</td><td class="hint">${esc(why)}</td></tr>`;
+      <td>${esc(rdvTypeNom(rd))}</td><td><span class="badge ${c.badge}" title="${esc(rdvWindowLabel(rd))}">${rd.hDeb ? esc(rd.hDeb + '–' + rd.hFin) : c.nom}</span></td><td>${esc(rd.amdActuel)}</td><td class="hint">${esc(why)}</td></tr>`;
   }).join('');
   if (pickedJob != null) $$(`#t-unassigned .pick[data-job="${pickedJob}"]`).forEach((x) => x.classList.add('sel'));
 }
@@ -764,15 +950,15 @@ function download(name, content, type) {
 function exportCsv() {
   const R = state.results[state.date]; if (!R) return;
   const q = (v) => '"' + String(v ?? '').replace(/"/g, '""') + '"';
-  const lines = [['date', 'amd', 'ordre', 'heure_arrivee', 'patient', 'code_postal', 'ville', 'adresse', 'intervention', 'demi_journee', 'attente_min'].join(';')];
+  const lines = [['date', 'amd', 'ordre', 'heure_arrivee', 'id_rdv', 'patient', 'code_postal', 'ville', 'adresse', 'intervention', 'creneau', 'attente_min', 'infos_acces'].join(';')];
   R.amds.forEach((a, i) => {
     const r = R.res.routes.find((x) => x.vehicle === i + 1); if (!r) return; let n = 0;
     r.steps.filter((s) => s.type === 'job').forEach((s) => {
       n++; const rd = R.rdv[s.job - 1];
-      lines.push([frDate(R.date), a.nom, n, s2hm(s.arrival), rd.patient, rd.cp, rd.ville, rd.adresse, (typeOf(rd.type) || {}).nom || rd.type, crenOf(rd.cren).nom, Math.round((s.waiting_time || 0) / 60)].map(q).join(';'));
+      lines.push([frDate(R.date), a.nom, n, s2hm(s.arrival), rd.idRdv || '', rd.patient, rd.cp, rd.ville, rd.adresse, rdvTypeNom(rd), rdvWindowLabel(rd), Math.round((s.waiting_time || 0) / 60), infoTitle(rd).replace(/\n/g, ' | ')].map(q).join(';'));
     });
   });
-  R.res.unassigned.forEach((u) => { const rd = R.rdv[u.id - 1]; lines.push([frDate(R.date), 'NON AFFECTÉ', '', '', rd.patient, rd.cp, rd.ville, rd.adresse, rd.type, crenOf(rd.cren).nom, ''].map(q).join(';')); });
+  R.res.unassigned.forEach((u) => { const rd = R.rdv[u.id - 1]; lines.push([frDate(R.date), 'NON AFFECTÉ', '', '', rd.idRdv || '', rd.patient, rd.cp, rd.ville, rd.adresse, rdvTypeNom(rd), rdvWindowLabel(rd), '', infoTitle(rd).replace(/\n/g, ' | ')].map(q).join(';')); });
   download(`tournees_${R.date}.csv`, '﻿' + lines.join('\r\n'), 'text/csv;charset=utf-8');
 }
 
@@ -843,6 +1029,7 @@ window.OptiApp = {
   hasResult: (iso) => !!state.results[iso],
   setDate(iso) { if (iso && iso !== state.date) { state.date = iso; save(); alertMsg('#r-msg', ''); renderResult(); } },
   typeOf, depotOf, crenOf, hm2s, longDate, frDate,
+  rdvWindow: (rd) => rdvWindow(rd), rdvWindowLabel: (rd) => rdvWindowLabel(rd), rdvTypeNom, rdvO2, rdvInfos,
   vehicleWindow: (a) => vehicleWindow(a, state.params),
   pickedJob: () => pickedJob,
   selectJob, hoverJob,

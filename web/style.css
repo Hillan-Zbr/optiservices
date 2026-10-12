@@ -149,6 +149,11 @@ body[data-view=resultat] #map-result{height:calc(100vh - 32px);max-height:900px}
 .b-matin{background:#e3ecf8;color:var(--accent)}
 .b-mi{background:#e6f3ef;color:#1f6b5c}
 .b-am{background:var(--warn-soft);color:var(--warn)}
+.b-jour{background:#efeaf7;color:#5b3f99}
+.info-dot{text-decoration:underline dotted;cursor:help}
+details.infos{margin-top:4px;font-size:13px}
+details.infos summary{cursor:pointer;color:var(--accent)}
+details.infos div{white-space:pre-wrap}
 .empty{padding:16px 18px;color:var(--muted);font-size:14px}
 .pin{width:26px;height:26px;border-radius:50%;color:#fff;font:600 12px var(--m);display:grid;place-items:center;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.4)}
 .pin.dep{border-radius:4px;background:#18212e}

@@ -52,6 +52,7 @@
         <div><label for="p-pause-fin">Pause déjeuner : fin au plus tard</label><input id="p-pause-fin" type="time" data-param="pauseFin"></div>
         <div><label for="p-pause-duree">Durée de la pause (min)</label><input id="p-pause-duree" type="number" min="0" step="5" data-param="pauseDuree"></div>
         <div><label for="p-stat">Temps de stationnement (min)</label><input id="p-stat" type="number" min="0" step="1" data-param="stationnement"></div>
+        <div><label for="p-multi">RDV à plusieurs types : % de la somme des durées</label><input id="p-multi" type="number" min="10" max="100" step="5" data-param="multiCoef"></div>
       </div>
     </section>
 
@@ -149,7 +150,7 @@
     </div>
     <div class="scroll">
       <table class="tbl">
-        <thead><tr><th>Nom</th><th>Point de départ</th><th>Disponible</th><th>Heures max</th><th>Km max</th><th>Habilité O2</th><th></th></tr></thead>
+        <thead><tr><th>Code Isadom</th><th>Nom</th><th>Point de départ</th><th>Disponible</th><th>Heures max</th><th>Km max</th><th>Habilité O2</th><th></th></tr></thead>
         <tbody id="t-amd"></tbody>
       </table>
     </div>
@@ -177,6 +178,7 @@
 
     <details class="csvfmt">
       <summary>Format du fichier CSV à importer</summary>
+      <p><b>Export Isadom</b> (requête RDV v7, en-tête <code>IdRdv;TypeBesoin;DateRdv;HeureDebut;…</code>) : reconnu automatiquement. Les RDV déjà importés sont mis à jour par leur IdRdv, ceux qui ont disparu de l'export sur les mêmes dates sont retirés ; les coordonnées et les heures Isadom sont utilisées telles quelles, les types de visite inconnus sont ajoutés aux paramètres (20 min par défaut).</p>
       <p>Fichier texte UTF-8, séparateur point-virgule <code>;</code>, une ligne d'en-tête puis une ligne par RDV. Depuis Excel : « Enregistrer sous › CSV UTF-8 (délimité par des points-virgules) ». Les RDV importés s'ajoutent à ceux déjà présents.</p>
       <div class="scroll">
         <table class="tbl">
