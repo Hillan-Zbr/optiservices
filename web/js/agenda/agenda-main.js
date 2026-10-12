@@ -46,7 +46,7 @@ function trajetsPour(R) {
   if (!points.length) { c.etat = 'ok'; c.t = null; return c; }
   fetchTrajetsAntennes(antennes, points)
     .then((t) => { c.etat = 'ok'; c.t = t; })
-    .catch((e) => { c.etat = 'erreur'; console.warn('Agenda : matrice OSRM indisponible,', e.message); })
+    .catch((e) => { c.etat = 'erreur'; console.warn('Agenda : matrice OSRM indisponible,', e.message); if (window.OptiJournal) window.OptiJournal.warn('optimisation', 'Motifs de non-affectation indisponibles', 'Matrice OSRM injoignable', e.message); })
     .finally(render);
   return c;
 }
