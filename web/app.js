@@ -195,10 +195,17 @@ async function geocode(q, postcode) {
   state.geo[key] = res;
   return res;
 }
+/* zone couverte par la carte OSRM (extrait PACA + Corse) : un point hors zone fait échouer tout le calcul VROOM */
+const ZONE_CARTE = [
+  { nom: 'PACA', lat: [42.95, 45.15], lon: [4.2, 7.75] },
+  { nom: 'Corse', lat: [41.3, 43.05], lon: [8.5, 9.6] }
+];
+const inZone = (g) => !!g && !g.none && ZONE_CARTE.some((z) => g.lat >= z.lat[0] && g.lat <= z.lat[1] && g.lon >= z.lon[0] && g.lon <= z.lon[1]);
+const MOTIF_HORS_ZONE = 'hors zone de la carte (PACA / Corse)';
 async function geocodeRdv(r) {
   const q = r.adresse ? r.adresse + ' ' + r.ville : r.ville;
   const g = await geocode(q, r.cp);
-  r.geo = g.none ? { none: true } : g;
+  r.geo = g.none ? { none: true } : inZone(g) ? g : Object.assign({}, g, { none: true, horsZone: true });
 }
 async function geocodeDepot(d) {
   const cp = (d.adr.match(/\b\d{5}\b/) || [])[0];
@@ -214,6 +221,7 @@ async function pool(items, fn, n = 5) {
 }
 function geoBadge(g) {
   if (!g) return '<span class="geo no">À localiser</span>';
+  if (g.horsZone) return `<span class="geo ko" title="${esc(g.label || '')}">Hors zone carte</span>`;
   if (g.none) return '<span class="geo ko">Introuvable</span>';
   if (g.src) return `<span class="geo ok" title="${esc(g.label)}">Isadom${g.src === 'w3w' ? ' (W3W)' : ''}</span>`;
   const cls = g.score >= 0.6 ? 'ok' : 'low';
@@ -512,7 +520,8 @@ function crenFromIsadom(label, hDeb, hFin) {
 /* coordonnées Isadom : W3W figées > lat/lon Isadom > W3W non figées ; sinon géocodage BAN à l'optimisation */
 function isadomGeo(get) {
   const num = (v) => { const x = parseFloat(String(v).replace(',', '.')); return Number.isFinite(x) ? x : null; };
-  const pt = (la, lo) => { const lat = num(get(la)), lon = num(get(lo)); return lat != null && lon != null && lat > 41 && lat < 46 && lon > -5.5 && lon < 10 ? { lat, lon } : null; };
+  // coordonnées hors PACA / Corse ignorées (erreurs de saisie Isadom ou patient hors zone) -> géocodage par l'adresse
+  const pt = (la, lo) => { const lat = num(get(la)), lon = num(get(lo)); return lat != null && lon != null && inZone({ lat, lon }) ? { lat, lon } : null; };
   const w = pt('w3wlat', 'w3wlon'), c = pt('lat', 'lon');
   if (w && get('w3wfigee') === '1') return Object.assign(w, { label: 'What3Words figé (Isadom)', score: 1, src: 'w3w' });
   if (c) return Object.assign(c, { label: 'Coordonnées Isadom' + (get('geofigee') === '1' ? ' (figées)' : ''), score: 1, src: 'isadom' });
@@ -535,7 +544,7 @@ function importIsadom(rows, head, name) {
     const t = { code, nom: def ? def[1] : code + ' (Isadom)', duree: def ? def[2] : DUREE_TYPE_DEFAUT, o2: false };
     p.types.push(t); created.push(t);
   };
-  const errs = []; const warns = []; const seen = new Map(); const dates = new Set();
+  const errs = []; const warns = []; const seen = new Map(); const dates = new Set(); const geoRejet = [];
   rows.slice(1).forEach((r, k) => {
     const get = (c) => { const i = col(c); const v = i >= 0 ? (r[i] || '').trim() : ''; return /^null$/i.test(v) ? '' : v; };
     const line = k + 2; const pb = [];
@@ -558,7 +567,7 @@ function importIsadom(rows, head, name) {
       type: types[0], types, amdActuel: get('amdnom'), amdCode: get('amdcode'), antenne: get('antenne'), secteur: get('secteurlibelle'),
       acces: { tel1: get('telfixe'), tel2: get('telautre'), batiment: get('batiment'), etage: get('etage'), porte: get('porte'), interphone: get('interphone'), info: get('infoadresse') }
     };
-    const g = isadomGeo(get); if (g) rd.geo = g;
+    const g = isadomGeo(get); if (g) rd.geo = g; else if (get('lat') || get('w3wlat')) geoRejet.push(id);
     seen.set(id, rd); dates.add(date);
   });
   // fusion : un RDV déjà connu (même IdRdv) est remplacé ; un RDV Isadom d'une date couverte par le fichier
@@ -594,6 +603,7 @@ function importIsadom(rows, head, name) {
   const info = [
     `${added} nouveau${added > 1 ? 'x' : ''}, ${updated} mis à jour, ${removed} retiré${removed > 1 ? 's' : ''} (absent${removed > 1 ? 's' : ''} du nouvel export)`,
     `${seen.size - noGeo} localisé${seen.size - noGeo > 1 ? 's' : ''} par les coordonnées Isadom · ${noGeo} à géocoder par l'adresse`,
+    geoRejet.length ? `${geoRejet.length} RDV avec des coordonnées Isadom hors PACA / Corse (erreur de saisie ou patient hors zone) : regéocodés par l'adresse, écartés si toujours hors zone — RDV ${geoRejet.map(esc).join(', ')}` : '',
     `${multi} RDV à plusieurs types de visite : durée = somme × ${p.multiCoef} %`,
     outScope ? `${outScope} RDV sur des antennes hors test (non optimisés tant que l'antenne n'est pas incluse dans les paramètres)` : '',
     created.length ? `${created.length} type${created.length > 1 ? 's' : ''} de visite ajouté${created.length > 1 ? 's' : ''} aux paramètres : ${created.map((t) => `<code>${esc(t.code)}</code> ${t.duree} min`).join(', ')}` : '',
@@ -632,12 +642,14 @@ async function optimize() {
     alertMsg(msg, 'Localisation des adresses…');
     const deps = [...new Set(amds.map((a) => a.depot))].map(depotOf).filter((d) => !d.geo || d.geo.none);
     await pool(deps, geocodeDepot);
+    // coordonnées déjà connues mais hors zone (import antérieur) : on retente par l'adresse
+    day.forEach((r) => { if (r.geo && !r.geo.none && !inZone(r.geo)) delete r.geo; });
     await pool(day.filter((r) => !r.geo), geocodeRdv);
     save(); renderPlan();
     const badDep = amds.filter((a) => depotOf(a.depot).geo.none);
     if (badDep.length) throw new Error('Adresse introuvable pour : ' + [...new Set(badDep.map((a) => depotOf(a.depot).nom))].join(', ') + '. Corrigez-la dans les paramètres.');
-    const jobsR = day.filter((r) => r.geo && !r.geo.none);
-    const excluded = day.filter((r) => !r.geo || r.geo.none);
+    const jobsR = day.filter((r) => inZone(r.geo));
+    const excluded = day.filter((r) => !inZone(r.geo)).map((r) => Object.assign(clone(r), { motif: r.geo && r.geo.horsZone ? MOTIF_HORS_ZONE : 'adresse introuvable' }));
     const badType = jobsR.filter((r) => rdvTypes(r).some((c) => !typeOf(c)));
     if (badType.length) throw new Error('Type d’intervention inconnu pour ' + badType.map((r) => esc(r.patient)).join(', '));
 
@@ -657,15 +669,24 @@ async function optimize() {
       }
       return v;
     });
-    const jobs = jobsR.map((r, j) => {
-      return {
-        id: j + 1, description: r.patient, location: [r.geo.lon, r.geo.lat],
-        setup: p.stationnement * 60, service: rdvDuree(r, p) * 60,
-        time_windows: [rdvWindow(r, p)], skills: rdvO2(r) ? [1] : []
-      };
-    });
-    const req = { vehicles, jobs, options: { g: true } };
-    const res = await callVroom(req);
+    const buildJobs = () => jobsR.map((r, j) => ({
+      id: j + 1, description: r.patient, location: [r.geo.lon, r.geo.lat],
+      setup: p.stationnement * 60, service: rdvDuree(r, p) * 60,
+      time_windows: [rdvWindow(r, p)], skills: rdvO2(r) ? [1] : []
+    }));
+    let req, res;
+    // un RDV qu'OSRM ne sait pas rejoindre fait échouer tout le calcul : on l'écarte et on relance
+    for (let essai = 0; ; essai++) {
+      req = { vehicles, jobs: buildJobs(), options: { g: true } };
+      try { res = await callVroom(req); break; } catch (e) {
+        const m = /near location \[(-?[\d.]+),\s*(-?[\d.]+)\]/.exec(e.message || '');
+        const lon = m && Number(m[1]), lat = m && Number(m[2]);
+        const bad = m ? jobsR.filter((r) => Math.abs(r.geo.lon - lon) < 1e-5 && Math.abs(r.geo.lat - lat) < 1e-5) : [];
+        if (!bad.length || essai >= 20) throw e;
+        bad.forEach((r) => { jobsR.splice(jobsR.indexOf(r), 1); excluded.push(Object.assign(clone(r), { motif: 'aucune route depuis la carte (point isolé ou hors zone)' })); });
+        alertMsg(msg, `Calcul des tournées… (${excluded.length} RDV écarté${excluded.length > 1 ? 's' : ''})`);
+      }
+    }
 
     let cmp = null, resAct = null;
     const withCur = jobsR.map((r, j) => ({ j, a: amds.findIndex((a) => amdMatch(r, a)) })).filter((x) => x.a >= 0);
@@ -815,7 +836,7 @@ function renderResult() {
     if (!R.amds.some((a) => { const w = vehicleWindow(a, state.params); return w[0] < c[1] && w[1] > c[0]; })) return 'aucun AMD disponible sur ce créneau';
     return 'créneau, heures ou km max trop serrés';
   };
-  unRows = res.unassigned.map((u) => ({ rd: R.rdv[u.id - 1], job: u.id, why: why(R.rdv[u.id - 1]) })).concat(R.excluded.map((rd) => ({ rd, why: 'adresse introuvable' })));
+  unRows = res.unassigned.map((u) => ({ rd: R.rdv[u.id - 1], job: u.id, why: why(R.rdv[u.id - 1]) })).concat(R.excluded.map((rd) => ({ rd, why: rd.motif || 'adresse introuvable' })));
   renderUnassigned();
 
   drawResultMap(R);
