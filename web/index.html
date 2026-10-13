@@ -151,14 +151,37 @@
   <section class="card">
     <div class="row-between">
       <h2>AMD disponibles <span class="count" id="c-amd"></span></h2>
-      <button class="btn2" id="amd-add" type="button">+ Ajouter un AMD</button>
+      <div class="actions">
+        <label class="btn2" for="amd-csv-file">Importer des AMD (CSV)</label>
+        <input type="file" id="amd-csv-file" accept=".csv,text/csv" hidden>
+        <button class="btn2" id="amd-add" type="button">+ Ajouter un AMD</button>
+      </div>
     </div>
+    <div id="amd-report" hidden></div>
     <div class="scroll">
       <table class="tbl">
         <thead><tr><th>Code Isadom</th><th>Nom</th><th>Point de départ</th><th>Disponible</th><th>Heures max</th><th>Km max</th><th>Habilité O2</th><th></th></tr></thead>
         <tbody id="t-amd"></tbody>
       </table>
     </div>
+    <details class="csvfmt">
+      <summary>Format du fichier CSV des AMD</summary>
+      <p><b>Export Isadom</b> (en-tête <code>IdAmd;AmdCode;Civilite;AmdNom;AmdPrenom;IdAntenne;AntenneCode;Antenne;Mail;TelGsm</code>) : reconnu automatiquement. Le nom affiché est « NOM Prénom », le point de départ vient de l'antenne ; le texte <code>NULL</code> est traité comme vide, et le mail, le téléphone et la civilité ne sont pas lus.</p>
+      <p>Fichier texte UTF-8, séparateur point-virgule <code>;</code>, une ligne d'en-tête puis une ligne par AMD. Un AMD déjà présent est retrouvé par son code Isadom (sinon par son nom) et mis à jour ; seules les colonnes présentes dans le fichier modifient sa fiche. Les AMD absents du fichier sont conservés.</p>
+      <div class="scroll">
+        <table class="tbl">
+          <thead><tr><th>Colonne</th><th>Obligatoire</th><th>Valeurs attendues</th><th>Exemple</th></tr></thead>
+          <tbody id="t-amdcsvfmt"></tbody>
+        </table>
+      </div>
+      <pre class="code">code;nom;depart;disponible;heures_max;km_max;o2
+GALJM;GALLIANO Jean-Marc;ARARD 13;journee;5;250;non
+GUIFR;GUINET FONTAINE Franck;ARARD 04/05;journee;5;250;oui</pre>
+      <div class="form-row">
+        <a class="btn2" href="modele_amd.csv" download>Télécharger le modèle CSV</a>
+        <span class="hint">Les codes du modèle sont fictifs : remplacez-les par les codes Isadom réels (AnnAnnuaire.sCodeAnnuaire).</span>
+      </div>
+    </details>
   </section>
 
   <section class="card">

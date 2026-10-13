@@ -475,6 +475,31 @@ function bindPlan() {
     const f = e.target.files[0]; if (!f) return;
     importCsv(await f.text(), f.name); e.target.value = '';
   });
+  // import des AMD (CSV) : la logique est dans js/amd/amd-csv.js, chargé à la demande
+  const amdCsv = import('./js/amd/amd-csv.js');
+  amdCsv.then((m) => {
+    $('#t-amdcsvfmt').innerHTML = m.AMD_CSV_COLS.map((c) => `<tr><td class="mono"><b>${c[0]}</b></td><td>${c[1]}</td><td>${esc(c[2])}</td><td class="mono">${esc(c[3])}</td></tr>`).join('');
+  }).catch((e) => console.error(e));
+  $('#amd-csv-file').addEventListener('change', async (e) => {
+    const f = e.target.files[0]; if (!f) return;
+    const text = await f.text(); e.target.value = '';
+    const rep = $('#amd-report');
+    try {
+      const m = await amdCsv;
+      const r = m.planAmdImport(text, state.amd, state.params);
+      rep.hidden = false;
+      if (r.fatal) { rep.className = 'warn'; rep.innerHTML = `<b>${esc(f.name)}</b> : ${esc(r.fatal)}`; return; }
+      state.amd = r.amd; save(true); renderPlan();
+      const n = (x, one, many) => x + ' ' + (x > 1 ? many : one);
+      const off = r.created.concat(r.updated).filter((a) => { const d = depotOf(a.depot); return !d || !d.actif; });
+      const all = r.errors.concat(r.warnings);
+      rep.className = r.errors.length ? 'warn' : 'ok';
+      rep.innerHTML = `<b>${esc(f.name)}</b> : ${n(r.created.length, 'AMD créé', 'AMD créés')}, ${n(r.updated.length, 'mis à jour', 'mis à jour')}`
+        + (r.errors.length ? `, ${n(r.errors.length, 'ligne ignorée', 'lignes ignorées')}` : '') + '.'
+        + (off.length ? `<ul><li>${n(off.length, 'AMD part', 'AMD partent')} d'un point de départ hors test (non optimisés tant que l'antenne n'est pas incluse) : ${off.map((a) => esc(a.nom)).join(', ')}</li></ul>` : '')
+        + (all.length ? '<ul>' + all.slice(0, 30).map((x) => '<li>' + esc(x) + '</li>').join('') + (all.length > 30 ? '<li>…</li>' : '') + '</ul>' : '');
+    } catch (err) { console.error(err); rep.hidden = false; rep.className = 'warn'; rep.textContent = 'Import impossible : ' + err.message; }
+  });
   $('#pl-go').addEventListener('click', optimize);
   $('#r-opt').addEventListener('click', optimize);
   $('#r-prev').addEventListener('click', () => gotoDay(-1));
