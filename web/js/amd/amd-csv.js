@@ -1,6 +1,7 @@
 /* Import des AMD depuis un fichier CSV — logique pure, sans DOM (testée dans tests/amd-csv.test.mjs).
    Format : UTF-8, séparateur « ; » (ou « , »), une ligne d'en-tête puis une ligne par AMD.
-   Colonnes : code ; nom ; depart ; disponible ; heures_max ; km_max ; o2   (seul « nom » ou « code » est obligatoire).
+   Colonnes : code ; nom ; depart ; disponible ; heures_max ; km_max   (seul « nom » ou « code » est obligatoire).
+   Tous les AMD sont habilités O2 : une colonne « o2 » éventuelle est ignorée.
    L'export Isadom (IdAmd;AmdCode;Civilite;AmdNom;AmdPrenom;IdAntenne;AntenneCode;Antenne;Mail;TelGsm) est reconnu tel quel :
    AmdCode -> code, AmdNom + AmdPrenom -> nom (« NOM Prénom »), Antenne (sinon AntenneCode) -> départ.
    Mail, téléphone et civilité ne sont jamais lus (minimisation RGPD). Le texte « NULL » est traité comme vide. */
@@ -11,8 +12,7 @@ export const AMD_CSV_COLS = [
   ['depart', 'Non', 'Point de départ : antenne Isadom (ARARD 13), identifiant ou nom du point de départ. Vide : premier point de départ inclus dans le test.', 'ARARD 13'],
   ['disponible', 'Non', 'journee · matin · apres-midi · absent (défaut : journee)', 'journee'],
   ['heures_max', 'Non', 'Heures de conduite max par jour (défaut : paramètre général)', '5'],
-  ['km_max', 'Non', 'Kilomètres max par jour (défaut : paramètre général)', '250'],
-  ['o2', 'Non', 'Habilité O2 : oui / non (défaut : non)', 'non']
+  ['km_max', 'Non', 'Kilomètres max par jour (défaut : paramètre général)', '250']
 ];
 
 const ALIASES = {
@@ -23,8 +23,7 @@ const ALIASES = {
   departAlt: ['antennecode', 'antenne_code', 'code_antenne'],
   dispo: ['disponible', 'dispo', 'disponibilite'],
   hmax: ['heures_max', 'heures_maxi', 'hmax', 'heures'],
-  kmmax: ['km_max', 'km_maxi', 'kmmax', 'km'],
-  o2: ['o2', 'habilite_o2', 'habilite']
+  kmmax: ['km_max', 'km_maxi', 'kmmax', 'km']
 };
 
 export const norm = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
@@ -49,12 +48,6 @@ export function parseCsv(text) {
   return rows.filter((r) => r.some((x) => x.trim() !== ''));
 }
 
-const parseBool = (v) => {
-  const n = norm(v);
-  if (['oui', 'o', '1', 'true', 'vrai', 'x', 'yes', 'y'].includes(n)) return true;
-  if (['non', 'n', '0', 'false', 'faux', 'no', ''].includes(n)) return false;
-  return null;
-};
 export function parseDispo(v) {
   const n = norm(v);
   if (n === '' || n.startsWith('journ') || n === 'jour') return 'journee';
@@ -111,7 +104,6 @@ export function planAmdImport(text, existing, params) {
     if (has('dispo')) { const d = parseDispo(get('dispo')); if (d) patch.dispo = d; else pb.push('disponibilité invalide « ' + get('dispo') + ' »'); }
     if (has('hmax') && get('hmax') !== '') { const x = parseNum(get('hmax')); if (x != null) patch.hmax = x; else pb.push('heures max invalides « ' + get('hmax') + ' »'); }
     if (has('kmmax') && get('kmmax') !== '') { const x = parseNum(get('kmmax')); if (x != null) patch.kmmax = x; else pb.push('km max invalides « ' + get('kmmax') + ' »'); }
-    if (has('o2')) { const b = parseBool(get('o2')); if (b != null) patch.o2 = b; else pb.push('habilitation O2 invalide « ' + get('o2') + ' »'); }
     if (pb.length) { rep.errors.push(`Ligne ${line} (${nom || code}) : ${pb.join(', ')}`); return; }
 
     const key = code ? 'c:' + code.toLowerCase() : 'n:' + norm(nom);
@@ -127,7 +119,7 @@ export function planAmdImport(text, existing, params) {
       if (!rep.updated.includes(target)) rep.updated.push(target);
       return;
     }
-    const a = { nom: nom || code, depot: patch.depot, dispo: patch.dispo || 'journee', hmax: patch.hmax ?? params.hmax, kmmax: patch.kmmax ?? params.kmmax, o2: patch.o2 ?? false };
+    const a = { nom: nom || code, depot: patch.depot, dispo: patch.dispo || 'journee', hmax: patch.hmax ?? params.hmax, kmmax: patch.kmmax ?? params.kmmax, actif: true };
     if (code) a.code = code;
     if (!a.depot) { a.depot = defaultDepot && defaultDepot.id; noDepot.push(a.nom); }
     amd.push(a); rep.created.push(a);

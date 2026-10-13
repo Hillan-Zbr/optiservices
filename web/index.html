@@ -78,7 +78,7 @@
     </div>
     <div class="scroll">
       <table class="tbl">
-        <thead><tr><th>Code CSV</th><th>Libellé</th><th>Durée sur place (min)</th><th>Réservé aux AMD habilités O2</th><th></th></tr></thead>
+        <thead><tr><th>Code CSV</th><th>Libellé</th><th>Durée sur place (min)</th><th>Visite O2 (repère dans l'agenda)</th><th></th></tr></thead>
         <tbody id="t-types"></tbody>
       </table>
     </div>
@@ -157,12 +157,13 @@
         <label class="btn2" for="amd-csv-file">Importer des AMD (CSV)</label>
         <input type="file" id="amd-csv-file" accept=".csv,text/csv" hidden>
         <button class="btn2" id="amd-add" type="button">+ Ajouter un AMD</button>
+        <span id="amd-del-zone"><button class="btn2 danger" id="amd-clear" type="button">Tout supprimer</button></span>
       </div>
     </div>
     <div id="amd-report" hidden></div>
     <div class="scroll">
       <table class="tbl">
-        <thead><tr><th>Code Isadom</th><th>Nom</th><th>Point de départ</th><th>Disponible</th><th>Heures max</th><th>Km max</th><th>Habilité O2</th><th></th></tr></thead>
+        <thead><tr><th>Actif</th><th>Code Isadom</th><th>Nom</th><th>Point de départ</th><th>Disponible</th><th>Heures max</th><th>Km max</th><th></th></tr></thead>
         <tbody id="t-amd"></tbody>
       </table>
     </div>
@@ -176,9 +177,9 @@
           <tbody id="t-amdcsvfmt"></tbody>
         </table>
       </div>
-      <pre class="code">code;nom;depart;disponible;heures_max;km_max;o2
-GALJM;GALLIANO Jean-Marc;ARARD 13;journee;5;250;non
-GUIFR;GUINET FONTAINE Franck;ARARD 04/05;journee;5;250;oui</pre>
+      <pre class="code">code;nom;depart;disponible;heures_max;km_max
+AMD01;DUPONT Paul;ARARD 13;journee;5;250
+AMD02;MARTIN Julie;ARARD 04/05;matin;5;250</pre>
       <p class="hint">Les codes de l'exemple sont fictifs : utilisez les codes Isadom réels (AnnAnnuaire.sCodeAnnuaire).</p>
     </details>
   </section>

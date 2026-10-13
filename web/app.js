@@ -102,12 +102,10 @@ const ISADOM_TYPES = [
   ['LIVO2L', 'Livraison O2 liquide (14 min/cuve)', 14], ['O2L', 'Livraison O2 liquide (14 min/cuve)', 14],
   ['LP', 'Livraison perfusion', 10], ['M', 'Maintenance', 20], ['RET', 'Retrait partiel de dispositif', 10]
 ];
-const DEFAULT_AMD = [
-  { nom: 'GALLIANO Jean-Marc', depot: 'aub', dispo: 'journee', hmax: 5, kmmax: 250, o2: false },
-  { nom: 'SI-MOHAMMED Bounouar', depot: 'aub', dispo: 'journee', hmax: 5, kmmax: 250, o2: false },
-  { nom: 'GUINET FONTAINE Franck', depot: 'sis', dispo: 'journee', hmax: 5, kmmax: 250, o2: true },
-  { nom: 'IDOUDI Ayadi', depot: 'sis', dispo: 'matin', hmax: 5, kmmax: 250, o2: false }
-];
+// liste vide au départ, comme les RDV : les AMD sont importés par CSV à chaque test
+const DEFAULT_AMD = [];
+// tous les AMD sont habilités O2 : pas de compétence VROOM. Un AMD décoché « Actif » est ignoré par l'optimisation.
+const amdActif = (a) => a.actif !== false;
 const DEMO_RDV = [
   ['Patient test 01', '04100', 'Manosque', 'LIV', 'matin', 'GALLIANO'],
   ['Patient test 02', '04110', 'Reillanne', 'PPC', 'matin', 'GALLIANO'],
@@ -258,7 +256,7 @@ function renderParams() {
     <td style="width:110px"><input class="mono" data-type="${i}" data-k="code" value="${esc(t.code)}" aria-label="Code"></td>
     <td><input data-type="${i}" data-k="nom" value="${esc(t.nom)}" aria-label="Libellé"></td>
     <td style="width:170px"><input type="number" min="0" step="5" class="mono" data-type="${i}" data-k="duree" value="${t.duree}" aria-label="Durée"></td>
-    <td><input type="checkbox" data-type="${i}" data-k="o2" ${t.o2 ? 'checked' : ''} aria-label="Réservé O2"></td>
+    <td><input type="checkbox" data-type="${i}" data-k="o2" ${t.o2 ? 'checked' : ''} aria-label="Visite O2"></td>
     <td><button class="icon-btn" data-type-del="${i}" type="button" aria-label="Supprimer ce type">×</button></td></tr>`).join('');
   $('#l-depots').innerHTML = p.depots.map((d, i) => `<div class="depot ${d.actif ? 'on' : ''}">
     <div class="row-between"><b>${esc(d.nom)}</b>
@@ -345,17 +343,17 @@ function renderPlan() {
   if (!state.date) state.date = nextWorkday();
   $('#pl-date').value = frDate(state.date);
   const deps = state.params.depots;
-  $('#c-amd').textContent = '· ' + state.amd.filter((a) => a.dispo !== 'absent').length;
+  $('#c-amd').textContent = '· ' + state.amd.filter((a) => amdActif(a) && a.dispo !== 'absent').length;
   $('#t-amd').innerHTML = state.amd.map((a, i) => {
-    const d = depotOf(a.depot); const off = a.dispo === 'absent' || !d || !d.actif;
+    const d = depotOf(a.depot); const off = !amdActif(a) || a.dispo === 'absent' || !d || !d.actif;
     return `<tr class="${off ? 'off' : ''}">
+    <td><input type="checkbox" data-amd="${i}" data-k="actif" ${amdActif(a) ? 'checked' : ''} aria-label="AMD actif"></td>
     <td style="width:90px"><input class="mono" data-amd="${i}" data-k="code" value="${esc(a.code || '')}" placeholder="—" aria-label="Code Isadom de l'AMD"></td>
     <td><input data-amd="${i}" data-k="nom" value="${esc(a.nom)}" aria-label="Nom de l'AMD"></td>
     <td><select data-amd="${i}" data-k="depot" aria-label="Point de départ">${deps.map((x) => `<option value="${x.id}" ${x.id === a.depot ? 'selected' : ''}>${esc(x.nom)}${x.actif ? '' : ' (hors test)'}</option>`).join('')}</select></td>
     <td><select data-amd="${i}" data-k="dispo" aria-label="Disponibilité">${DISPOS.map((x) => `<option value="${x.code}" ${x.code === a.dispo ? 'selected' : ''}>${x.nom}</option>`).join('')}</select></td>
     <td style="width:100px"><input type="number" min="0" step="0.5" class="mono" data-amd="${i}" data-k="hmax" value="${a.hmax}" aria-label="Heures max"></td>
     <td style="width:100px"><input type="number" min="0" step="10" class="mono" data-amd="${i}" data-k="kmmax" value="${a.kmmax}" aria-label="Km max"></td>
-    <td><input type="checkbox" data-amd="${i}" data-k="o2" ${a.o2 ? 'checked' : ''} aria-label="Habilité O2"></td>
     <td><button class="icon-btn" data-amd-del="${i}" type="button" aria-label="Retirer cet AMD">×</button></td></tr>`;
   }).join('');
 
@@ -418,6 +416,9 @@ function rdvMatches(r) {
 function resetDelZone() {
   $('#del-zone').innerHTML = '<button class="btn2 danger" id="rdv-clear" type="button">Tout supprimer</button>';
 }
+function resetAmdDelZone() {
+  $('#amd-del-zone').innerHTML = '<button class="btn2 danger" id="amd-clear" type="button">Tout supprimer</button>';
+}
 let filterTimer;
 function bindPlan() {
   const v = $('#v-planification');
@@ -436,7 +437,7 @@ function bindPlan() {
       a[el.dataset.k] = el.type === 'checkbox' ? el.checked : isNum ? Number(el.value) : el.value;
       const shown = (k, v) => (k === 'depot' ? (depotOf(v) || { nom: v }).nom : k === 'dispo' ? (DISPOS.find((x) => x.code === v) || { nom: v }).nom : v);
       J.info('action', 'AMD modifié', `${a.nom} : ${fieldLabel(el)}`, { avant: shown(el.dataset.k, avant), apres: shown(el.dataset.k, a[el.dataset.k]) });
-      save(); if (['depot', 'dispo'].includes(el.dataset.k)) renderPlan();
+      save(); if (['depot', 'dispo', 'actif'].includes(el.dataset.k)) renderPlan();
     } else if (el.dataset.rdv) {
       const r = state.rdv[Number(el.dataset.rdv)]; const avant = r[el.dataset.k];
       r[el.dataset.k] = el.value;
@@ -472,6 +473,14 @@ function bindPlan() {
     }
     if (t.id === 'rdv-clear-ok') { J.warn('action', 'Tous les RDV supprimés', `${state.rdv.length} RDV supprimés`); state.rdv = []; save(); $('#csv-report').hidden = true; renderPlan(); return; }
     if (t.id === 'rdv-clear-no') { resetDelZone(); }
+    if (t.id === 'amd-clear') {
+      if (!state.amd.length) return;
+      $('#amd-del-zone').innerHTML = `<span style="display:inline-flex;gap:8px;align-items:center;flex-wrap:wrap"><b style="color:var(--danger)">Supprimer les ${state.amd.length} AMD ?</b>
+        <button class="btn2 danger" id="amd-clear-ok" type="button">Confirmer</button><button class="btn2" id="amd-clear-no" type="button">Annuler</button></span>`;
+      return;
+    }
+    if (t.id === 'amd-clear-ok') { J.warn('action', 'Tous les AMD supprimés', `${state.amd.length} AMD supprimés`); state.amd = []; save(); $('#amd-report').hidden = true; resetAmdDelZone(); renderPlan(); return; }
+    if (t.id === 'amd-clear-no') { resetAmdDelZone(); }
     if (t.id === 'rdv-filter-clear') {
       Object.keys(rdvFilter).forEach((k) => delete rdvFilter[k]);
       $$('[data-filter]').forEach((x) => { x.value = ''; });
@@ -486,7 +495,7 @@ function bindPlan() {
   });
   $('#amd-add').addEventListener('click', () => {
     const p = state.params; const d = p.depots.find((x) => x.actif) || p.depots[0];
-    state.amd.push({ nom: 'NOUVEL AMD', depot: d.id, dispo: 'journee', hmax: p.hmax, kmmax: p.kmmax, o2: false }); J.info('action', 'AMD ajouté', 'NOUVEL AMD · ' + d.nom); save(); renderPlan();
+    state.amd.push({ nom: 'NOUVEL AMD', depot: d.id, dispo: 'journee', hmax: p.hmax, kmmax: p.kmmax, actif: true }); J.info('action', 'AMD ajouté', 'NOUVEL AMD · ' + d.nom); save(); renderPlan();
   });
   $('#rdv-add').addEventListener('click', () => {
     state.rdv.push({ date: state.date, patient: 'Patient test ' + String(state.rdv.length + 1).padStart(2, '0'), cp: '', ville: '', adresse: '', type: state.params.types[0].code, cren: 'matin', amdActuel: '' });
@@ -714,7 +723,7 @@ function importIsadom(rows, head, name) {
     const cnt = new Map();
     seen.forEach((rd) => { if (rd.amdCode === code) { const d = depotOfAntenne(rd.antenne); if (d) cnt.set(d.id, (cnt.get(d.id) || 0) + 1); } });
     const depot = [...cnt].sort((a, b) => b[1] - a[1])[0];
-    return { code, nom, depot: depot ? depot[0] : (p.depots.find((x) => x.actif) || p.depots[0]).id, dispo: 'journee', hmax: p.hmax, kmmax: p.kmmax, o2: false };
+    return { code, nom, depot: depot ? depot[0] : (p.depots.find((x) => x.actif) || p.depots[0]).id, dispo: 'journee', hmax: p.hmax, kmmax: p.kmmax, actif: true };
   });
   const outScope = [...seen.values()].filter((rd) => !rdvInScope(rd)).length;
   const noGeo = [...seen.values()].filter((rd) => !rd.geo).length;
@@ -778,8 +787,8 @@ async function optimize() {
   const btn = onResult ? $('#r-opt') : $('#pl-go'); const p = state.params;
   const day = state.rdv.filter((r) => r.date === state.date && rdvInScope(r));
   if (!day.length) { alertMsg(msg, `Aucun RDV le ${frDate(state.date)} sur les antennes incluses dans le test.`, 'err'); J.warn('optimisation', 'Optimisation impossible', `Aucun RDV le ${frDate(state.date)} sur les antennes incluses dans le test`); return; }
-  const amds = state.amd.filter((a) => a.dispo !== 'absent' && depotOf(a.depot) && depotOf(a.depot).actif);
-  if (!amds.length) { alertMsg(msg, 'Aucun AMD disponible partant d’un point de départ inclus dans le test.', 'err'); J.warn('optimisation', 'Optimisation impossible', `Aucun AMD disponible le ${frDate(state.date)} sur les antennes du test`); return; }
+  const amds = state.amd.filter((a) => amdActif(a) && a.dispo !== 'absent' && depotOf(a.depot) && depotOf(a.depot).actif);
+  if (!amds.length) { alertMsg(msg, 'Aucun AMD actif et disponible partant d’un point de départ inclus dans le test.', 'err'); J.warn('optimisation', 'Optimisation impossible', `Aucun AMD disponible le ${frDate(state.date)} sur les antennes du test`); return; }
   J.info('optimisation', 'Optimisation lancée', `Journée du ${frDate(state.date)} · ${day.length} RDV · ${amds.length} AMD`);
   const t0 = Date.now();
   if (btn) btn.disabled = true;
@@ -806,7 +815,7 @@ async function optimize() {
       const v = {
         id: i + 1, description: a.nom, profile: 'car', start: loc, end: loc,
         time_window: vehicleWindow(a, p), speed_factor: Math.min(5, Math.max(0.2, sf)),
-        skills: a.o2 ? [1] : []
+        skills: []
       };
       if (a.hmax > 0) v.max_travel_time = Math.round(a.hmax * 3600);
       if (a.kmmax > 0) v.max_distance = Math.round(a.kmmax * 1000);
@@ -818,7 +827,7 @@ async function optimize() {
     const buildJobs = () => jobsR.map((r, j) => ({
       id: j + 1, description: r.patient, location: [r.geo.lon, r.geo.lat],
       setup: p.stationnement * 60, service: rdvDuree(r, p) * 60,
-      time_windows: [rdvWindow(r, p)], skills: rdvO2(r) ? [1] : []
+      time_windows: [rdvWindow(r, p)], skills: []
     }));
     let req, res;
     // un RDV qu'OSRM ne sait pas rejoindre fait échouer tout le calcul : on l'écarte et on relance
@@ -986,7 +995,6 @@ function renderResult() {
 
   // non affectés
   const why = (rd) => {
-    if (rdvO2(rd) && !R.amds.some((a) => a.o2)) return 'aucun AMD habilité O2 disponible';
     const c = rdvWindow(rd);
     if (!R.amds.some((a) => { const w = vehicleWindow(a, state.params); return w[0] < c[1] && w[1] > c[0]; })) return 'aucun AMD disponible sur ce créneau';
     return 'créneau, heures ou km max trop serrés';

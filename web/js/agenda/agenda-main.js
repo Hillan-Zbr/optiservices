@@ -56,7 +56,7 @@ function motifs(R) {
   const vehicles = R.amds.map((a, i) => {
     const w = app.vehicleWindow(a);
     return {
-      id: i + 1, o2: !!a.o2, fenetre: { debutMin: w[0] / 60, finMin: w[1] / 60 },
+      id: i + 1, o2: true /* tous les AMD sont habilités O2 */, fenetre: { debutMin: w[0] / 60, finMin: w[1] / 60 },
       maxDistance: a.kmmax > 0 ? a.kmmax * 1000 : 0, maxTravelTime: a.hmax > 0 ? a.hmax * 3600 : 0,
       speedFactor: Math.min(5, Math.max(0.2, coef))
     };
