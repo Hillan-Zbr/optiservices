@@ -9,6 +9,7 @@
 <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
 <link rel="stylesheet" href="style.css">
 <link rel="stylesheet" href="css/agenda.css">
+<link rel="stylesheet" href="css/journal.css">
 </head>
 <body>
 <header class="top">
@@ -19,6 +20,7 @@
       <a href="#planification" data-tab="planification">2 · Planification</a>
       <a href="#resultat" data-tab="resultat">3 · Résultat</a>
     </nav>
+    <button class="aide-btn" id="btn-aide" type="button" aria-haspopup="dialog">Aide<span class="aide-n" id="btn-aide-n" hidden></span></button>
   </div>
 </header>
 
@@ -301,8 +303,48 @@ GUIFR;GUINET FONTAINE Franck;ARARD 04/05;journee;5;250;oui</pre>
 
 </main>
 
+<!-- ============ AIDE · JOURNAL D'ACTIVITÉ ============ -->
+<dialog id="dlg-aide" class="dlg" aria-labelledby="jr-titre">
+  <div class="dlg-h">
+    <div>
+      <h2 id="jr-titre">Aide · Journal d'activité</h2>
+      <p class="hint">Intégrations CSV, actions et erreurs enregistrées dans ce navigateur (3 000 dernières lignes). Niveaux : <span class="niv info">INFO</span> information · <span class="niv warn">WARN</span> à vérifier · <span class="niv crit">CRIT</span> bloquant.</p>
+    </div>
+    <button class="icon-btn" id="jr-close" type="button" aria-label="Fermer">×</button>
+  </div>
+  <div class="dlg-f" id="jr-filtres">
+    <fieldset class="jr-niv">
+      <legend>Niveau</legend>
+      <label><input type="checkbox" name="niveau" value="crit" checked> <span class="niv crit">CRIT</span></label>
+      <label><input type="checkbox" name="niveau" value="warn" checked> <span class="niv warn">WARN</span></label>
+      <label><input type="checkbox" name="niveau" value="info" checked> <span class="niv info">INFO</span></label>
+    </fieldset>
+    <div><label for="jr-cat">Catégorie</label><select id="jr-cat"></select></div>
+    <div><label for="jr-du">Du</label><input id="jr-du" type="date"></div>
+    <div><label for="jr-au">Au</label><input id="jr-au" type="date"></div>
+    <div class="grow"><label for="jr-txt">Rechercher</label><input id="jr-txt" type="search" placeholder="fichier, n° de RDV, AMD, message…"></div>
+    <button class="btn2" id="jr-reset" type="button">Réinitialiser</button>
+  </div>
+  <div class="row-between dlg-bar">
+    <span class="hint" id="jr-count"></span>
+    <div class="actions">
+      <span id="jr-clear-zone"><button class="btn2 danger small" type="button" data-clear="ask">Vider le journal</button></span>
+      <button class="btn2" id="jr-csv" type="button">Exporter en CSV (Excel)</button>
+    </div>
+  </div>
+  <div class="dlg-b">
+    <table class="tbl jr-tbl">
+      <thead><tr><th>Date et heure</th><th>Niveau</th><th>Catégorie</th><th>Action · message</th></tr></thead>
+      <tbody id="jr-body"></tbody>
+    </table>
+    <button class="btn2" id="jr-more" type="button" hidden></button>
+  </div>
+</dialog>
+
 <script src="vendor/leaflet/leaflet.js"></script>
+<script src="js/journal/journal-core.js"></script>
 <script src="app.js"></script>
 <script type="module" src="js/agenda/agenda-main.js"></script>
+<script type="module" src="js/journal/journal-view.js"></script>
 </body>
 </html>

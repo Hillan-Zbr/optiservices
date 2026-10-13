@@ -21,3 +21,13 @@ Mise à jour de l'appli : remplacer les fichiers de web/ puis recharger la page 
 Données : paramètres, AMD et RDV sont stockés dans le navigateur (localStorage).
   Bouton "Exporter la configuration" pour sauvegarder / transférer paramètres et AMD.
 Réseau : le serveur doit joindre data.geopf.fr (géocodage) ; le navigateur doit joindre tile.openstreetmap.org (fond de carte).
+
+Journal d'activité (bouton « Aide » en haut à droite) :
+  Trace les intégrations CSV (fichier, lignes ignorées, types de visite et AMD inconnus), les actions
+  utilisateur (modifications d'AMD, de RDV, de paramètres, exports, optimisations) et les erreurs.
+  Chaque ligne a un niveau : INFO (information), WARN (à vérifier), CRIT (bloquant).
+  Filtres : niveau, catégorie, période, recherche texte. Export CSV (Excel) des lignes filtrées.
+  Stockage : navigateur (localStorage, clé optiservices.journal.v1), 3 000 dernières lignes.
+  Les RDV sont référencés par leur n° Isadom, pas par le nom du patient.
+  Fichiers : web/js/journal/journal-core.js, web/js/journal/journal-view.js, web/css/journal.css
+  Tests : node --test tests/journal.test.mjs

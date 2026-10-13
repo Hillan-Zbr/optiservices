@@ -1,0 +1,47 @@
+/* Optiservices — bouton Aide et journal d'activité */
+.top-in .tabs{margin-left:auto}
+.aide-btn{position:relative;display:inline-flex;align-items:center;gap:6px;height:38px;padding:0 14px;border:1px solid rgba(255,255,255,.6);border-radius:6px;background:transparent;color:#fff;font:600 14px var(--f);cursor:pointer}
+.aide-btn::before{content:'?';display:grid;place-items:center;width:18px;height:18px;border-radius:50%;border:1.5px solid currentColor;font-size:12px;line-height:1}
+.aide-btn:hover{background:rgba(255,255,255,.12)}
+.aide-btn:focus-visible{outline:2px solid #fff;outline-offset:2px}
+.aide-n{position:absolute;top:-7px;right:-7px;min-width:20px;height:20px;padding:0 5px;border-radius:999px;background:#f0b429;color:#3b2600;font:600 11px/20px var(--m);text-align:center;box-shadow:0 0 0 2px var(--accent)}
+.aide-n.crit{background:var(--danger);color:#fff}
+
+/* niveaux */
+.niv{display:inline-block;min-width:44px;padding:2px 6px;border-radius:4px;font:600 11px/1.4 var(--m);text-align:center;letter-spacing:.04em}
+.niv.info{background:#e3ecf8;color:var(--accent)}
+.niv.warn{background:var(--warn-soft);color:var(--warn)}
+.niv.crit{background:#fdecea;color:var(--danger)}
+.danger-txt{color:var(--danger);font-size:14px}
+
+/* fenêtre */
+.dlg{width:min(1200px,calc(100vw - 32px));max-height:calc(100vh - 32px);padding:0;border:1px solid var(--line);border-radius:12px;color:var(--fg);background:var(--surface);box-shadow:0 20px 50px rgba(16,24,40,.25)}
+.dlg[open]{display:flex;flex-direction:column}
+.dlg::backdrop{background:rgba(24,33,46,.45)}
+.dlg-h{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;padding:18px 20px 12px;border-bottom:1px solid var(--line2)}
+.dlg-h .icon-btn:hover{background:var(--accent-soft);color:var(--fg)}
+.dlg-h .hint{margin-top:4px}
+.dlg-f{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;padding:14px 20px;background:#f8fafc;border-bottom:1px solid var(--line2)}
+.dlg-f > div{width:150px}
+.dlg-f > div.grow{flex:1 1 220px;width:auto}
+.jr-niv{display:flex;gap:12px;align-items:center;border:0;margin:0;padding:0;min-height:38px}
+.jr-niv legend{font-size:13px;font-weight:600;color:var(--label);padding:0;margin-bottom:6px;float:left;width:100%}
+.jr-niv label{display:inline-flex;align-items:center;gap:4px;margin:0;font-weight:500;cursor:pointer}
+.dlg-bar{padding:10px 20px}
+.dlg-bar .actions{align-items:center}
+#jr-clear-zone{display:inline-flex;gap:8px;align-items:center;flex-wrap:wrap}
+.dlg-b{overflow:auto;padding:0 20px 20px;min-height:200px}
+.jr-tbl thead th{position:sticky;top:0;background:var(--surface);z-index:1}
+.jr-tbl td{vertical-align:top}
+.jr-tbl .nowrap{white-space:nowrap}
+.jr-tbl .det{font-family:var(--m);font-size:12px;word-break:break-word;margin-top:2px}
+.jr-tbl tr.n-crit td:first-child{box-shadow:inset 3px 0 0 var(--danger)}
+.jr-tbl tr.n-warn td:first-child{box-shadow:inset 3px 0 0 #e0a800}
+.jr-tbl tr.new td{background:#fffbea}
+#jr-more{margin-top:12px}
+
+@media (max-width:600px){
+  .dlg-f > div{width:calc(50% - 6px)}
+  .jr-tbl td:nth-child(3),.jr-tbl th:nth-child(3){display:none}
+}
+@media print{.aide-btn,.dlg{display:none!important}}

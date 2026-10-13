@@ -13,6 +13,13 @@ const fmtDur = (s) => { const m = Math.round(s / 60); return Math.floor(m / 60) 
 const fmtKm = (m) => (m / 1000).toLocaleString('fr-FR', { maximumFractionDigits: 1 }) + ' km';
 const norm = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 const clone = (o) => JSON.parse(JSON.stringify(o));
+/* journal d'activité (js/journal/journal-core.js) : sans effet s'il n'est pas chargé */
+const J = window.OptiJournal || { log() {}, info() {}, warn() {}, crit() {} };
+/* référence d'un RDV dans le journal : n° Isadom plutôt que le nom du patient (données de santé) */
+// référence d'un RDV dans le journal : n° Isadom, jamais le nom du patient (RGPD)
+const rdvRef = (rd) => (rd && rd.idRdv ? 'RDV ' + rd.idRdv : 'RDV saisi à la main' + (rd && rd.cp ? ' (' + rd.cp + ' ' + (rd.ville || '') + ')' : ''));
+/* libellé d'un champ de formulaire pour le journal */
+const fieldLabel = (el) => ((el.labels && el.labels[0] && el.labels[0].textContent) || el.getAttribute('aria-label') || el.dataset.k || el.id || '').trim();
 const COLORS = ['#1d4f91', '#2e8b7a', '#c26a1a', '#7a5bb5', '#b5476a', '#4f7a1f', '#8a6d00', '#0f7c9c', '#a33b3b', '#555f6e'];
 
 const CRENEAUX = [
@@ -151,7 +158,8 @@ function save(flag) {
     try { localStorage.setItem(KEY, JSON.stringify(state)); break; } catch (e) {
       // stockage plein : on oublie le résultat le plus ancien et on réessaie
       const old = Object.values(state.results).sort((a, b) => a.at.localeCompare(b.at));
-      if (old.length < 2) { console.warn('Sauvegarde impossible', e); break; }
+      if (old.length < 2) { console.warn('Sauvegarde impossible', e); J.crit('systeme', 'Sauvegarde impossible', 'Stockage du navigateur plein : les dernières modifications ne seront pas conservées après rechargement', e); break; }
+      J.warn('systeme', 'Résultat purgé', `Stockage plein : résultat du ${frDate(old[0].date)} supprimé pour libérer de la place`);
       delete state.results[old[0].date];
     }
   }
@@ -263,36 +271,47 @@ function bindParams() {
   const v = $('#v-parametres');
   v.addEventListener('change', (e) => {
     const el = e.target; const p = state.params;
+    const logChg = (quoi, avant, apres) => { if (String(avant) !== String(apres)) J.info('parametres', 'Paramètre modifié', quoi, { avant, apres }); };
     if (el.dataset.param) {
+      const avant = p[el.dataset.param];
       p[el.dataset.param] = el.type === 'number' ? Number(el.value) : el.value;
+      logChg(fieldLabel(el), avant, p[el.dataset.param]);
     } else if (el.dataset.cren) {
+      const avant = p.creneaux[el.dataset.cren][Number(el.dataset.pos)];
       p.creneaux[el.dataset.cren][Number(el.dataset.pos)] = el.value;
+      logChg('Créneau : ' + fieldLabel(el), avant, el.value);
     } else if (el.dataset.type) {
-      const t = p.types[Number(el.dataset.type)];
+      const t = p.types[Number(el.dataset.type)]; const avant = t[el.dataset.k];
       t[el.dataset.k] = el.type === 'checkbox' ? el.checked : el.type === 'number' ? Number(el.value) : (el.dataset.k === 'code' ? el.value.trim().toUpperCase() : el.value);
+      logChg(`Type d'intervention ${t.code} : ${fieldLabel(el)}`, avant, t[el.dataset.k]);
     } else if (el.dataset.depot) {
       const d = p.depots[Number(el.dataset.depot)];
-      if (el.dataset.k === 'actif') d.actif = el.checked;
-      else if (el.dataset.k === 'isadom') d.isadom = el.value.trim();
-      else { d.adr = el.value; delete d.geo; }
+      if (el.dataset.k === 'actif') { d.actif = el.checked; J.info('parametres', d.actif ? 'Antenne incluse dans le test' : 'Antenne exclue du test', d.nom); }
+      else if (el.dataset.k === 'isadom') { logChg(d.nom + ' : antenne Isadom', d.isadom, el.value.trim()); d.isadom = el.value.trim(); }
+      else { logChg(d.nom + ' : adresse', d.adr, el.value); d.adr = el.value; delete d.geo; }
       renderParams();
     } else return;
     save(true);
   });
   v.addEventListener('click', (e) => {
     const del = e.target.closest('[data-type-del]');
-    if (del) { state.params.types.splice(Number(del.dataset.typeDel), 1); save(true); renderParams(); }
+    if (del) { const [t] = state.params.types.splice(Number(del.dataset.typeDel), 1); J.info('parametres', "Type d'intervention supprimé", `${t.code} · ${t.nom} (${t.duree} min)`); save(true); renderParams(); }
   });
   $('#type-add').addEventListener('click', () => {
-    state.params.types.push({ code: 'NOUV', nom: 'Nouveau type', duree: 30, o2: false }); save(true); renderParams();
+    state.params.types.push({ code: 'NOUV', nom: 'Nouveau type', duree: 30, o2: false }); J.info('parametres', "Type d'intervention ajouté", 'NOUV · Nouveau type (30 min)'); save(true); renderParams();
   });
   $('#depot-geo').addEventListener('click', async (e) => {
     e.target.disabled = true;
-    try { await pool(state.params.depots, geocodeDepot); } catch (err) { console.error(err); const f = $('#saved-flag'); f.textContent = err.message; f.hidden = false; }
+    try {
+      await pool(state.params.depots, geocodeDepot);
+      const ko = state.params.depots.filter((d) => d.geo && d.geo.none);
+      J.log(ko.length ? 'warn' : 'info', 'parametres', 'Localisation des antennes', ko.length ? `${ko.length} adresse${ko.length > 1 ? 's' : ''} introuvable${ko.length > 1 ? 's' : ''}` : `${state.params.depots.length} adresses localisées`, ko.map((d) => d.nom + ' : ' + d.adr));
+    } catch (err) { console.error(err); J.crit('parametres', 'Localisation des antennes', err.message); const f = $('#saved-flag'); f.textContent = err.message; f.hidden = false; }
     e.target.disabled = false; save(true); renderParams();
   });
   $('#cfg-export').addEventListener('click', () => {
     download('opriservices-config.json', JSON.stringify({ params: state.params, amd: state.amd }, null, 2), 'application/json');
+    J.info('parametres', 'Export de la configuration', 'opriservices-config.json', { types: state.params.types.length, amd: state.amd.length });
   });
   $('#cfg-import').addEventListener('change', async (e) => {
     const f = e.target.files[0]; if (!f) return;
@@ -300,8 +319,10 @@ function bindParams() {
       const j = JSON.parse(await f.text());
       if (j.params) { state.params = Object.assign(clone(DEFAULT_PARAMS), j.params); migrateParams(state.params); }
       if (Array.isArray(j.amd)) state.amd = j.amd;
+      if (!j.params && !Array.isArray(j.amd)) J.warn('parametres', 'Import de la configuration', `« ${f.name} » ne contient ni paramètres ni AMD : rien n'a été importé`);
+      else J.info('parametres', 'Import de la configuration', f.name, { parametres: j.params ? 'remplacés' : 'inchangés', amd: Array.isArray(j.amd) ? j.amd.length + ' (remplacés)' : 'inchangés' });
       save(true); renderParams();
-    } catch (err) { window.console.error(err); }
+    } catch (err) { window.console.error(err); J.crit('parametres', 'Import de la configuration', `Fichier « ${f.name} » illisible (JSON attendu)`, err.message); }
     e.target.value = '';
   });
 }
@@ -406,17 +427,20 @@ function bindPlan() {
       const iso = parseDate(el.value);
       if (!iso) { el.setCustomValidity('Date attendue au format jj/mm/aaaa'); el.reportValidity(); return; }
       el.setCustomValidity('');
-      if (el.id === 'pl-date') state.date = iso; else state.rdv[Number(el.dataset.rdv)].date = iso;
+      if (el.id === 'pl-date') { if (state.date !== iso) J.info('action', 'Date planifiée changée', frDate(iso)); state.date = iso; } else { const r = state.rdv[Number(el.dataset.rdv)]; J.info('action', 'RDV modifié', rdvRef(r) + ' : date', { avant: frDate(r.date), apres: frDate(iso) }); r.date = iso; }
       save(); renderPlan(); return;
     }
     const isNum = el.type === 'number';
     if (el.dataset.amd) {
-      const a = state.amd[Number(el.dataset.amd)];
+      const a = state.amd[Number(el.dataset.amd)]; const avant = a[el.dataset.k];
       a[el.dataset.k] = el.type === 'checkbox' ? el.checked : isNum ? Number(el.value) : el.value;
+      const shown = (k, v) => (k === 'depot' ? (depotOf(v) || { nom: v }).nom : k === 'dispo' ? (DISPOS.find((x) => x.code === v) || { nom: v }).nom : v);
+      J.info('action', 'AMD modifié', `${a.nom} : ${fieldLabel(el)}`, { avant: shown(el.dataset.k, avant), apres: shown(el.dataset.k, a[el.dataset.k]) });
       save(); if (['depot', 'dispo'].includes(el.dataset.k)) renderPlan();
     } else if (el.dataset.rdv) {
-      const r = state.rdv[Number(el.dataset.rdv)];
+      const r = state.rdv[Number(el.dataset.rdv)]; const avant = r[el.dataset.k];
       r[el.dataset.k] = el.value;
+      J.info('action', 'RDV modifié', `${rdvRef(r)} : ${fieldLabel(el)}`, el.dataset.k === 'patient' ? '' : { avant, apres: el.value });
       if (['cp', 'ville', 'adresse'].includes(el.dataset.k)) delete r.geo;
       save(); if (['date', 'cp', 'ville', 'adresse'].includes(el.dataset.k)) renderPlan();
     }
@@ -437,16 +461,16 @@ function bindPlan() {
   v.addEventListener('click', (e) => {
     const t = e.target;
     const ad = t.closest('[data-amd-del]');
-    if (ad) { state.amd.splice(Number(ad.dataset.amdDel), 1); save(); renderPlan(); return; }
+    if (ad) { const [a] = state.amd.splice(Number(ad.dataset.amdDel), 1); J.info('action', 'AMD retiré', a.nom + (a.code ? ' (' + a.code + ')' : '')); save(); renderPlan(); return; }
     const rd = t.closest('[data-rdv-del]');
-    if (rd) { state.rdv.splice(Number(rd.dataset.rdvDel), 1); save(); renderPlan(); return; }
+    if (rd) { const [r] = state.rdv.splice(Number(rd.dataset.rdvDel), 1); J.info('action', 'RDV supprimé', `${rdvRef(r)} du ${frDate(r.date)}`); save(); renderPlan(); return; }
     if (t.id === 'rdv-clear') {
       if (!state.rdv.length) return;
       $('#del-zone').innerHTML = `<span style="display:inline-flex;gap:8px;align-items:center;flex-wrap:wrap"><b style="color:var(--danger)">Supprimer les ${state.rdv.length} RDV ?</b>
         <button class="btn2 danger" id="rdv-clear-ok" type="button">Confirmer</button><button class="btn2" id="rdv-clear-no" type="button">Annuler</button></span>`;
       return;
     }
-    if (t.id === 'rdv-clear-ok') { state.rdv = []; save(); $('#csv-report').hidden = true; renderPlan(); return; }
+    if (t.id === 'rdv-clear-ok') { J.warn('action', 'Tous les RDV supprimés', `${state.rdv.length} RDV supprimés`); state.rdv = []; save(); $('#csv-report').hidden = true; renderPlan(); return; }
     if (t.id === 'rdv-clear-no') { resetDelZone(); }
     if (t.id === 'rdv-filter-clear') {
       Object.keys(rdvFilter).forEach((k) => delete rdvFilter[k]);
@@ -455,25 +479,28 @@ function bindPlan() {
     }
     if (t.id === 'amd-from-isadom') {
       pendingAmd.forEach((a) => { if (!state.amd.some((x) => String(x.code || '') === a.code)) state.amd.push(a); });
+      J.info('action', 'AMD ajoutés depuis Isadom', `${pendingAmd.length} AMD`, pendingAmd.map((a) => `${a.nom} (${a.code}) → ${(depotOf(a.depot) || {}).nom || a.depot}`));
       t.replaceWith(document.createTextNode(`→ ${pendingAmd.length} AMD ajouté${pendingAmd.length > 1 ? 's' : ''} (point de départ = antenne de leurs RDV, à vérifier).`));
       pendingAmd = []; save(); renderPlan();
     }
   });
   $('#amd-add').addEventListener('click', () => {
     const p = state.params; const d = p.depots.find((x) => x.actif) || p.depots[0];
-    state.amd.push({ nom: 'NOUVEL AMD', depot: d.id, dispo: 'journee', hmax: p.hmax, kmmax: p.kmmax, o2: false }); save(); renderPlan();
+    state.amd.push({ nom: 'NOUVEL AMD', depot: d.id, dispo: 'journee', hmax: p.hmax, kmmax: p.kmmax, o2: false }); J.info('action', 'AMD ajouté', 'NOUVEL AMD · ' + d.nom); save(); renderPlan();
   });
   $('#rdv-add').addEventListener('click', () => {
     state.rdv.push({ date: state.date, patient: 'Patient test ' + String(state.rdv.length + 1).padStart(2, '0'), cp: '', ville: '', adresse: '', type: state.params.types[0].code, cren: 'matin', amdActuel: '' });
-    save(); renderPlan();
+    J.info('action', 'RDV ajouté', `${rdvRef(state.rdv[state.rdv.length - 1])} le ${frDate(state.date)}`); save(); renderPlan();
   });
   $('#rdv-demo').addEventListener('click', () => {
     DEMO_RDV.forEach(([patient, cp, ville, type, cren, amd]) => state.rdv.push({ date: state.date, patient, cp, ville, adresse: '', type, cren, amdActuel: amd }));
-    save(); renderPlan();
+    J.info('action', "Chargement de l'exemple", `${DEMO_RDV.length} RDV de test ajoutés le ${frDate(state.date)}`); save(); renderPlan();
   });
   $('#csv-file').addEventListener('change', async (e) => {
     const f = e.target.files[0]; if (!f) return;
-    importCsv(await f.text(), f.name); e.target.value = '';
+    J.info('import', 'Fichier sélectionné', f.name, { taille: f.size < 1024 ? f.size + ' octets' : Math.round(f.size / 1024) + ' Ko' });
+    try { importCsv(await f.text(), f.name); } catch (err) { console.error(err); J.crit('import', 'Import interrompu', `« ${f.name} » : erreur inattendue pendant l'intégration`, err); }
+    e.target.value = '';
   });
   // import des AMD (CSV) : la logique est dans js/amd/amd-csv.js, chargé à la demande
   const amdCsv = import('./js/amd/amd-csv.js');
@@ -542,12 +569,14 @@ function parseDate(v) {
   v = v.trim();
   let m = v.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{2,4})$/);
   const iso = m ? `${m[3].length === 2 ? '20' + m[3] : m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}` : /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null;
-  return iso && new Date(iso + 'T12:00:00Z').toISOString().slice(0, 10) === iso ? iso : null;
+  if (!iso) return null;
+  const d = new Date(iso + 'T12:00:00Z'); // date impossible (ex. 32/10) : Invalid Date, toISOString lèverait une exception
+  return !isNaN(d) && d.toISOString().slice(0, 10) === iso ? iso : null;
 }
 function importCsv(text, name) {
   const rows = parseCsv(text);
   const rep = $('#csv-report');
-  if (rows.length < 2) { rep.className = 'warn'; rep.hidden = false; rep.innerHTML = 'Fichier vide ou sans ligne de données.'; return; }
+  if (rows.length < 2) { rep.className = 'warn'; rep.hidden = false; rep.innerHTML = 'Fichier vide ou sans ligne de données.'; J.crit('import', 'Import refusé', `« ${name} » : fichier vide ou sans ligne de données`); return; }
   const head = rows[0].map((h) => norm(h).replace(/ /g, '_'));
   if (head.includes('idrdv') && head.includes('daterdv')) { importIsadom(rows, head, name); return; }
   const idx = {}; CSV_COLS.forEach(([c]) => { idx[c] = head.indexOf(c); });
@@ -555,10 +584,12 @@ function importCsv(text, name) {
   if (missing.length) {
     rep.className = 'warn'; rep.hidden = false;
     rep.innerHTML = `Colonnes obligatoires absentes : <b>${missing.map(esc).join(', ')}</b>. Vérifiez la ligne d'en-tête et le séparateur point-virgule.`;
+    J.crit('import', 'Import refusé', `« ${name} » (format banc de test) : colonnes obligatoires absentes`, { absentes: missing.join(', '), entete: rows[0].join(';') });
     return;
   }
   const codes = new Map(state.params.types.map((t) => [norm(t.code), t.code]));
   const errs = []; let ok = 0;
+  J.info('import', 'Début de l’intégration', `« ${name} » · format banc de test · ${rows.length - 1} ligne${rows.length > 2 ? 's' : ''} de données`);
   rows.slice(1).forEach((r, k) => {
     const get = (c) => (idx[c] >= 0 ? (r[idx[c]] || '').trim() : '');
     const line = k + 2; const pb = [];
@@ -572,6 +603,8 @@ function importCsv(text, name) {
     state.rdv.push({ date, patient: get('patient') || 'Patient ligne ' + line, cp, ville, adresse: get('adresse'), type, cren, amdActuel: get('amd_actuel') });
     ok++;
   });
+  logLines(name, errs, []);
+  J.log(ok ? (errs.length ? 'warn' : 'info') : 'crit', 'import', 'Fin de l’intégration', `« ${name} » : ${ok} RDV importé${ok > 1 ? 's' : ''}, ${errs.length} ligne${errs.length > 1 ? 's' : ''} ignorée${errs.length > 1 ? 's' : ''}`);
   save();
   rep.hidden = false; rep.className = errs.length ? 'warn' : 'ok';
   rep.innerHTML = `<b>${esc(name)}</b> : ${ok} RDV importé${ok > 1 ? 's' : ''}${errs.length ? `, ${errs.length} ligne${errs.length > 1 ? 's' : ''} ignorée${errs.length > 1 ? 's' : ''}` : ''}.`
@@ -579,6 +612,15 @@ function importCsv(text, name) {
   const dates = [...new Set(state.rdv.map((r) => r.date))];
   if (ok && !state.rdv.some((r) => r.date === state.date) && dates.length) state.date = dates.sort()[0];
   save(); renderPlan();
+}
+
+/* une ligne de journal (warn) par ligne ignorée et par avertissement, plafonnée pour ne pas saturer le journal */
+const LOG_LIGNES_MAX = 200;
+function logLines(name, errs, warns) {
+  errs.slice(0, LOG_LIGNES_MAX).forEach((x) => J.warn('import', 'Ligne ignorée', x, 'Fichier : ' + name));
+  warns.slice(0, LOG_LIGNES_MAX).forEach((x) => J.warn('import', 'Donnée à vérifier', x, 'Fichier : ' + name));
+  const over = Math.max(0, errs.length - LOG_LIGNES_MAX) + Math.max(0, warns.length - LOG_LIGNES_MAX);
+  if (over) J.warn('import', 'Journal tronqué', `${over} autre${over > 1 ? 's' : ''} anomalie${over > 1 ? 's' : ''} non détaillée${over > 1 ? 's' : ''} pour « ${name} »`);
 }
 
 let pendingAmd = [];
@@ -611,6 +653,7 @@ function importIsadom(rows, head, name) {
   if (missing.length) {
     rep.className = 'warn'; rep.hidden = false;
     rep.innerHTML = `Export Isadom incomplet : colonnes absentes <b>${missing.map(esc).join(', ')}</b>. Relancez la requête RDV v7.`;
+    J.crit('import', 'Import refusé', `« ${name} » (export Isadom) : colonnes absentes, relancer la requête RDV v7`, { absentes: missing.join(', ') });
     return;
   }
   const created = [];
@@ -618,9 +661,10 @@ function importIsadom(rows, head, name) {
     if (typeOf(code)) return;
     const def = ISADOM_TYPES.find((t) => t[0] === code);
     const t = { code, nom: def ? def[1] : code + ' (Isadom)', duree: def ? def[2] : DUREE_TYPE_DEFAUT, o2: false };
-    p.types.push(t); created.push(t);
+    p.types.push(t); created.push(Object.assign({ connu: !!def }, t));
   };
   const errs = []; const warns = []; const seen = new Map(); const dates = new Set(); const geoRejet = [];
+  J.info('import', 'Début de l’intégration', `« ${name} » · export Isadom (requête RDV v7) · ${rows.length - 1} ligne${rows.length > 2 ? 's' : ''} de données`);
   rows.slice(1).forEach((r, k) => {
     const get = (c) => { const i = col(c); const v = i >= 0 ? (r[i] || '').trim() : ''; return /^null$/i.test(v) ? '' : v; };
     const line = k + 2; const pb = [];
@@ -687,6 +731,17 @@ function importIsadom(rows, head, name) {
     unknownAmd.length ? `${unknownAmd.length} AMD absent${unknownAmd.length > 1 ? 's' : ''} de la liste (comparaison impossible pour leurs RDV) : ${unknownAmd.map(([c, n]) => esc(n) + ' <span class="mono">(' + esc(c) + ')</span>').join(', ')} <button class="btn2" id="amd-from-isadom" type="button">Ajouter ${unknownAmd.length > 1 ? 'ces AMD' : 'cet AMD'}</button>` : ''
   ].filter(Boolean);
   const all = errs.concat(warns);
+  logLines(name, errs, warns);
+  created.forEach((t) => (t.connu
+    ? J.info('import', 'Type de visite ajouté', `${t.code} · ${t.nom} : ${t.duree} min (durée métier Isadom)`, 'Fichier : ' + name)
+    : J.warn('import', 'Type de visite inconnu ajouté', `${t.code} ajouté aux paramètres avec ${t.duree} min par défaut`, 'Durée à confirmer dans les paramètres · fichier : ' + name)));
+  if (unknownAmd.length) J.warn('import', 'AMD inconnus', `${unknownAmd.length} AMD absent${unknownAmd.length > 1 ? 's' : ''} de la liste : comparaison impossible pour leurs RDV`, unknownAmd.map(([c, n]) => `${n} (${c})`));
+  if (outScope) J.info('import', 'RDV hors test', `${outScope} RDV sur des antennes non incluses dans le test`);
+  if (geoRejet.length) J.warn('import', 'Coordonnées hors zone', `${geoRejet.length} RDV avec des coordonnées Isadom hors PACA / Corse : regéocodés par l'adresse`, geoRejet.map((id) => 'RDV ' + id));
+  if (removed) J.info('import', 'RDV retirés', `${removed} RDV absent${removed > 1 ? 's' : ''} du nouvel export (annulés ou déplacés dans Isadom)`);
+  J.log(seen.size ? (errs.length || warns.length ? 'warn' : 'info') : 'crit', 'import', 'Fin de l’intégration',
+    `« ${name} » : ${seen.size} RDV sur ${dates.size} jour${dates.size > 1 ? 's' : ''} · ${added} nouveau${added > 1 ? 'x' : ''}, ${updated} mis à jour, ${removed} retiré${removed > 1 ? 's' : ''}`,
+    { lignes_ignorees: errs.length, avertissements: warns.length, a_geocoder: noGeo, multi_types: multi });
   save();
   rep.hidden = false; rep.className = errs.length ? 'warn' : 'ok';
   rep.innerHTML = `<b>${esc(name)}</b> (export Isadom) : ${seen.size} RDV importé${seen.size > 1 ? 's' : ''} sur ${dates.size} jour${dates.size > 1 ? 's' : ''}${errs.length ? `, ${errs.length} ligne${errs.length > 1 ? 's' : ''} ignorée${errs.length > 1 ? 's' : ''}` : ''}.`
@@ -722,9 +777,11 @@ async function optimize() {
   const msg = onResult ? '#r-msg' : '#pl-msg';
   const btn = onResult ? $('#r-opt') : $('#pl-go'); const p = state.params;
   const day = state.rdv.filter((r) => r.date === state.date && rdvInScope(r));
-  if (!day.length) { alertMsg(msg, `Aucun RDV le ${frDate(state.date)} sur les antennes incluses dans le test.`, 'err'); return; }
+  if (!day.length) { alertMsg(msg, `Aucun RDV le ${frDate(state.date)} sur les antennes incluses dans le test.`, 'err'); J.warn('optimisation', 'Optimisation impossible', `Aucun RDV le ${frDate(state.date)} sur les antennes incluses dans le test`); return; }
   const amds = state.amd.filter((a) => a.dispo !== 'absent' && depotOf(a.depot) && depotOf(a.depot).actif);
-  if (!amds.length) { alertMsg(msg, 'Aucun AMD disponible partant d’un point de départ inclus dans le test.', 'err'); return; }
+  if (!amds.length) { alertMsg(msg, 'Aucun AMD disponible partant d’un point de départ inclus dans le test.', 'err'); J.warn('optimisation', 'Optimisation impossible', `Aucun AMD disponible le ${frDate(state.date)} sur les antennes du test`); return; }
+  J.info('optimisation', 'Optimisation lancée', `Journée du ${frDate(state.date)} · ${day.length} RDV · ${amds.length} AMD`);
+  const t0 = Date.now();
   if (btn) btn.disabled = true;
   try {
     alertMsg(msg, 'Localisation des adresses…');
@@ -738,6 +795,7 @@ async function optimize() {
     if (badDep.length) throw new Error('Adresse introuvable pour : ' + [...new Set(badDep.map((a) => depotOf(a.depot).nom))].join(', ') + '. Corrigez-la dans les paramètres.');
     const jobsR = day.filter((r) => inZone(r.geo));
     const excluded = day.filter((r) => !inZone(r.geo)).map((r) => Object.assign(clone(r), { motif: r.geo && r.geo.horsZone ? MOTIF_HORS_ZONE : 'adresse introuvable' }));
+    if (excluded.length) J.warn('optimisation', 'RDV écartés du calcul', `${excluded.length} RDV écarté${excluded.length > 1 ? 's' : ''} de l'optimisation du ${frDate(state.date)} (adresse introuvable ou hors carte)`, excluded.map((r) => `${rdvRef(r)} · ${r.cp} ${r.ville} · ${r.motif}`));
     const badType = jobsR.filter((r) => rdvTypes(r).some((c) => !typeOf(c)));
     if (badType.length) throw new Error('Type d’intervention inconnu pour ' + badType.map((r) => esc(r.patient)).join(', '));
 
@@ -790,10 +848,14 @@ async function optimize() {
     }
     state.results[state.date] = { date: state.date, at: new Date().toISOString(), amds: clone(amds), rdv: clone(jobsR), excluded: clone(excluded), res, resAct, cmp };
     save();
+    J.info('optimisation', 'Optimisation terminée', `Journée du ${frDate(state.date)} : ${res.routes.length} AMD mobilisé${res.routes.length > 1 ? 's' : ''} · ${fmtKm(res.summary.distance)} · ${fmtDur(res.summary.duration)} de conduite`,
+      { duree_calcul: ((Date.now() - t0) / 1000).toFixed(1) + ' s', rdv_planifies: jobsR.length - res.unassigned.length, gain_km: cmp ? fmtKm(cmp.act.distance - cmp.opt.distance) : '' });
+    if (res.unassigned.length) J.warn('optimisation', 'RDV non affectés', `${res.unassigned.length} RDV impossible${res.unassigned.length > 1 ? 's' : ''} à placer le ${frDate(state.date)}`, res.unassigned.map((u) => rdvRef(jobsR[u.id - 1])));
     alertMsg(msg, '');
     if (onResult) renderResult(); else location.hash = '#resultat';
   } catch (err) {
     console.error(err);
+    J.crit('optimisation', 'Échec de l’optimisation', `Journée du ${frDate(state.date)} : ${err.message || err}`);
     alertMsg(msg, esc(err.message || String(err)), 'err');
   } finally { if (btn) btn.disabled = false; }
 }
@@ -1076,6 +1138,7 @@ function exportCsv() {
   (R.excluded || []).forEach((rd) => { lines.push([frDate(R.date), 'ÉCARTÉ : ' + (rd.motif || 'adresse introuvable'), '', '', rd.idRdv || '', rd.patient, rd.cp, rd.ville, rd.adresse, rdvTypeNom(rd), rdvWindowLabel(rd), '', infoTitle(rd).replace(/\n/g, ' | ')].map(q).join(';')); });
   R.res.unassigned.forEach((u) => { const rd = R.rdv[u.id - 1]; lines.push([frDate(R.date), 'NON AFFECTÉ', '', '', rd.idRdv || '', rd.patient, rd.cp, rd.ville, rd.adresse, rdvTypeNom(rd), rdvWindowLabel(rd), '', infoTitle(rd).replace(/\n/g, ' | ')].map(q).join(';')); });
   download(`tournees_${R.date}.csv`, '﻿' + lines.join('\r\n'), 'text/csv;charset=utf-8');
+  J.info('action', 'Export des tournées', `tournees_${R.date}.csv · ${lines.length - 1} ligne${lines.length > 2 ? 's' : ''}`);
 }
 
 /* ---------- test trajet ---------- */
@@ -1125,7 +1188,8 @@ async function calcTrajet() {
       mapT.fitBounds(layerT.getBounds(), { padding: [24, 24] });
     }
     alertMsg('#tr-msg', '');
-  } catch (err) { alertMsg('#tr-msg', esc(err.message), 'err'); }
+    J.info('action', 'Test de trajet', `${$('#tr-dep').value} → ${$('#tr-arr').value} : ${fmtKm(rt.distance)} · ${Math.round(maj / 60)} min majorées`);
+  } catch (err) { alertMsg('#tr-msg', esc(err.message), 'err'); J.warn('action', 'Test de trajet en échec', `${$('#tr-dep').value} → ${$('#tr-arr').value}`, err.message); }
   finally { btn.disabled = false; }
 }
 function showEcart() {
@@ -1154,9 +1218,10 @@ window.OptiApp = {
 
 /* ---------- démarrage ---------- */
 load();
+J.info('systeme', 'Ouverture de l’application', `${state.rdv.length} RDV · ${state.amd.length} AMD · ${Object.keys(state.results).length} journée${Object.keys(state.results).length > 1 ? 's' : ''} optimisée${Object.keys(state.results).length > 1 ? 's' : ''} en mémoire`);
 bindParams();
 bindPlan();
 $('#r-csv').addEventListener('click', exportCsv);
-$('#r-print').addEventListener('click', () => window.print());
+$('#r-print').addEventListener('click', () => { J.info('action', 'Impression des feuilles de route', 'Journée du ' + frDate(state.date)); window.print(); });
 window.addEventListener('hashchange', route);
 route();
