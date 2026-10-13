@@ -28,7 +28,7 @@ function jobInfo(rd) {
   // fenêtre réelle du RDV (heures Isadom si présentes, sinon créneau paramétré) et types multiples
   const w = app.rdvWindow(rd);
   return {
-    patient: rd.patient, ville: rd.ville, intervention: app.rdvTypeNom(rd), o2: app.rdvO2(rd),
+    patient: app.patientLib(rd), ville: rd.ville, intervention: app.rdvTypeNom(rd), o2: app.rdvO2(rd),
     creneau: { debutMin: w[0] / 60, finMin: w[1] / 60, label: app.rdvWindowLabel(rd) }
   };
 }
@@ -89,7 +89,7 @@ function compute() {
 
 function titreRdv(rd) {
   const ji = jobInfo(rd, app.params);
-  return [rd.patient, rd.ville || '?', ji.intervention, ji.creneau.label].join(' · ');
+  return [app.patientLib(rd), rd.ville || '?', ji.intervention, ji.creneau.label].join(' · ');
 }
 
 function detailFor(jobId) {
@@ -101,7 +101,7 @@ function detailFor(jobId) {
   const u = current.nonAffectes.find((x) => x.jobId === jobId);
   if (u) {
     const ji = jobInfo(u.rd, app.params);
-    return { jobId, nonAffecte: true, patient: u.rd.patient, ville: u.rd.ville, intervention: ji.intervention, creneau: ji.creneau.label, motif: u.motif, surCarte: !!(u.rd.geo && !u.rd.geo.none) };
+    return { jobId, nonAffecte: true, patient: app.patientLib(u.rd), ville: u.rd.ville, intervention: ji.intervention, creneau: ji.creneau.label, motif: u.motif, surCarte: !!(u.rd.geo && !u.rd.geo.none) };
   }
   return null;
 }

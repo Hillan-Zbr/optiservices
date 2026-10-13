@@ -51,6 +51,8 @@ const rdvO2 = (rd) => rdvTypes(rd).some((c) => { const t = typeOf(c); return t &
 /* type(s) de visite affiché(s) : « CODE – libellé » (code Isadom sFKTypeVisite + libellé des paramètres) */
 const typeLabel = (c) => { const t = typeOf(c); return t && t.nom && t.nom !== c ? c + ' – ' + t.nom : c; };
 const rdvTypeNom = (rd) => rdvTypes(rd).map(typeLabel).join(' + ');
+// libellé patient des tournées, de la carte, de l'agenda et des exports : NOM Prénom (code patient Isadom)
+const patientLib = (rd) => rd.patient + (rd.patientCode ? ' (' + rd.patientCode + ')' : '');
 /* informations d'accès Isadom (AnnAdresse) : affichées au RP à la demande, destinées ensuite à MJ2 */
 function rdvInfos(rd) {
   const a = rd.acces || {};
@@ -141,6 +143,10 @@ function load() {
   migrateParams(state.params);
   // ancien format : un seul résultat
   if (state.result) { state.results[state.result.date] = state.result; delete state.result; }
+  // ancien libellé patient « NOM Prénom (code) » : le code est retiré du nom
+  const sansCode = (rd) => { const suf = rd.patientCode ? ' (' + rd.patientCode + ')' : ''; if (suf && String(rd.patient || '').endsWith(suf)) rd.patient = rd.patient.slice(0, -suf.length); };
+  state.rdv.forEach(sansCode);
+  Object.values(state.results).forEach((R) => [R.rdv, R.excluded].forEach((l) => (l || []).forEach(sansCode)));
 }
 /* complète une configuration enregistrée avant l'import Isadom (créneau Journée, antennes Isadom, coefficient multi-types) */
 function migrateParams(p) {
@@ -238,7 +244,7 @@ function geoBadge(g) {
 
 /* lignes du tableau des RDV écartés (écran 2 : prévision ; écran 3 : résultat) */
 function ecartesRows(list) {
-  return list.map((rd) => `<tr><td class="mono">${esc(frDate(rd.date))}</td><td class="mono">${esc(rd.idRdv || '')}</td><td><b>${esc(rd.patient)}</b>${rd.antenne ? `<div class="hint">${esc(rd.antenne)}</div>` : ''}</td>
+  return list.map((rd) => `<tr><td class="mono">${esc(frDate(rd.date))}</td><td class="mono">${esc(rd.patientCode || '')}</td><td class="mono">${esc(rd.idRdv || '')}</td><td><b>${esc(rd.patient)}</b>${rd.antenne ? `<div class="hint">${esc(rd.antenne)}</div>` : ''}</td>
     <td class="mono">${esc(rd.cp)}</td><td>${esc(rd.ville || '?')}</td><td>${esc(rd.adresse)}</td><td>${esc(rdvTypeNom(rd))}</td>
     <td class="mono">${esc(rd.hDeb ? rd.hDeb + '–' + rd.hFin : crenOf(rd.cren).nom)}</td><td>${esc(rd.amdActuel)}</td>
     <td><b style="color:var(--danger)">${esc(rd.motif)}</b>${rd.geo && rd.geo.label ? `<div class="hint">localisé : ${esc(rd.geo.label)}</div>` : ''}</td></tr>`).join('');
@@ -371,6 +377,7 @@ function renderPlan() {
   const order = state.rdv.map((r, i) => i).filter((i) => rdvMatches(state.rdv[i])).sort((a, b) => (state.rdv[a].date === state.date ? 0 : 1) - (state.rdv[b].date === state.date ? 0 : 1) || a - b);
   $('#t-rdv').innerHTML = state.rdv.length ? order.map((i) => { const r = state.rdv[i]; const isa = !!r.idRdv; return `<tr class="${r.date === state.date && rdvInScope(r) ? '' : 'off'}">
     <td style="width:150px"><input class="mono" ${DATE_ATTRS} data-rdv="${i}" data-k="date" value="${frDate(r.date)}" aria-label="Date"></td>
+    <td style="width:110px"><input class="mono" data-rdv="${i}" data-k="patientCode" value="${esc(r.patientCode || '')}" placeholder="—" aria-label="Code patient"></td>
     <td style="min-width:240px"><input data-rdv="${i}" data-k="patient" value="${esc(r.patient)}" aria-label="Patient">${isa ? `<div class="hint">${esc(r.antenne || '')} · RDV ${esc(r.idRdv)} · ${esc(r.besoin || '')}${infoTitle(r) ? ` · <span class="info-dot" title="${esc(infoTitle(r))}">infos</span>` : ''}</div>` : ''}</td>
     <td style="width:88px"><input class="mono" data-rdv="${i}" data-k="cp" value="${esc(r.cp)}" aria-label="Code postal"></td>
     <td><input data-rdv="${i}" data-k="ville" value="${esc(r.ville)}" aria-label="Ville"></td>
@@ -384,8 +391,8 @@ function renderPlan() {
     <td><input data-rdv="${i}" data-k="amdActuel" value="${esc(r.amdActuel)}" aria-label="AMD prévu">${r.amdCode ? `<div class="hint mono">code ${esc(r.amdCode)}</div>` : ''}</td>
     <td>${geoBadge(r.geo)}</td>
     <td><button class="icon-btn" data-rdv-del="${i}" type="button" aria-label="Supprimer ce RDV">×</button></td></tr>`; }).join('')
-    : '<tr><td colspan="10" class="empty">Aucun RDV. Importez un fichier CSV, ajoutez un RDV ou chargez l\'exemple.</td></tr>';
-  if (state.rdv.length && !order.length) $('#t-rdv').innerHTML = '<tr><td colspan="10" class="empty">Aucun RDV ne correspond à la recherche.</td></tr>';
+    : '<tr><td colspan="11" class="empty">Aucun RDV. Importez un fichier CSV, ajoutez un RDV ou chargez l\'exemple.</td></tr>';
+  if (state.rdv.length && !order.length) $('#t-rdv').innerHTML = '<tr><td colspan="11" class="empty">Aucun RDV ne correspond à la recherche.</td></tr>';
   $$('.dd-btn').forEach((b) => { const on = !!rdvSel[b.dataset.dd]; b.classList.toggle('on', on); b.title = on ? 'Filtre actif : modifier' : 'Filtrer par valeur'; });
   const filtering = Object.values(rdvFilter).some((v) => v && v.trim()) || Object.keys(rdvSel).length > 0;
   if (filtering) $('#c-rdv').textContent += ` · ${order.length} trouvé${order.length > 1 ? 's' : ''}`;
@@ -399,7 +406,8 @@ const rdvFilter = {};
 const geoText = (g) => (!g ? 'à localiser' : g.horsZone ? 'hors zone carte' : g.none ? 'introuvable' : g.src ? 'isadom ' + (g.src === 'w3w' ? 'w3w what3words' : 'coordonnees') + ' localise' : 'localise ban ' + (g.label || ''));
 const FILTER_TEXT = {
   date: (r) => frDate(r.date) + ' ' + r.date,
-  patient: (r) => [r.patient, r.patientCode, r.idRdv, r.antenne, r.besoin].join(' '),
+  code: (r) => r.patientCode,
+  patient: (r) => [r.patient, r.idRdv, r.antenne, r.besoin].join(' '),
   cp: (r) => r.cp, ville: (r) => r.ville, adresse: (r) => r.adresse,
   type: (r) => rdvTypes(r).join(' ') + ' ' + rdvTypeNom(r),
   cren: (r) => [crenOf(r.cren).nom, r.hDeb, r.hFin].join(' '),
@@ -419,6 +427,7 @@ const rdvSel = {}; // colonne → Set des valeurs cochées ; colonne absente = p
 const geoVal = (g) => (!g ? 'À localiser' : g.horsZone ? 'Hors zone carte' : g.none ? 'Introuvable' : g.src ? (g.src === 'w3w' ? 'Isadom (what3words)' : 'Isadom (coordonnées)') : 'Localisé (BAN)');
 const DD_VAL = {
   date: (r) => r.date || '',
+  code: (r) => r.patientCode || '',
   patient: (r) => r.patient || '',
   cp: (r) => r.cp || '', ville: (r) => r.ville || '', adresse: (r) => r.adresse || '',
   type: (r) => rdvTypeNom(r),
@@ -515,7 +524,7 @@ function bindPlan() {
     } else if (el.dataset.rdv) {
       const r = state.rdv[Number(el.dataset.rdv)]; const avant = r[el.dataset.k];
       r[el.dataset.k] = el.value;
-      J.info('action', 'RDV modifié', `${rdvRef(r)} : ${fieldLabel(el)}`, el.dataset.k === 'patient' ? '' : { avant, apres: el.value });
+      J.info('action', 'RDV modifié', `${rdvRef(r)} : ${fieldLabel(el)}`, ['patient', 'patientCode'].includes(el.dataset.k) ? '' : { avant, apres: el.value });
       if (['cp', 'ville', 'adresse'].includes(el.dataset.k)) delete r.geo;
       save(); if (['date', 'cp', 'ville', 'adresse'].includes(el.dataset.k)) renderPlan();
     }
@@ -767,8 +776,8 @@ function importIsadom(rows, head, name) {
     types.forEach(ensureType);
     const rd = {
       idRdv: id, besoin: get('typebesoin'), date, hDeb, hFin, cren: crenFromIsadom(get('demijournee'), hDeb, hFin),
-      // libellé patient affiché partout (tournées, carte, agenda, exports) : NOM Prénom (code patient Isadom)
-      patient: ([get('patientnom'), get('patientprenom')].filter(Boolean).join(' ') || 'Patient') + (get('patientcode') ? ' (' + get('patientcode') + ')' : ''),
+      // NOM Prénom seul : le code patient a sa propre colonne ; patientLib() les réunit hors de la planification
+      patient: [get('patientnom'), get('patientprenom')].filter(Boolean).join(' ') || 'Patient',
       patientCode: get('patientcode'), cp, ville,
       adresse: [get('numerovoie'), get('typevoie'), get('voie')].filter(Boolean).join(' ').replace(/\s+/g, ' '),
       type: types[0], types, amdActuel: get('amdnom'), amdCode: get('amdcode'), antenne: get('antenne'), secteur: get('secteurlibelle'),
@@ -883,7 +892,7 @@ async function optimize() {
     const excluded = day.filter((r) => !inZone(r.geo)).map((r) => Object.assign(clone(r), { motif: r.geo && r.geo.horsZone ? MOTIF_HORS_ZONE : 'adresse introuvable' }));
     if (excluded.length) J.warn('optimisation', 'RDV écartés du calcul', `${excluded.length} RDV écarté${excluded.length > 1 ? 's' : ''} de l'optimisation du ${frDate(state.date)} (adresse introuvable ou hors carte)`, excluded.map((r) => `${rdvRef(r)} · ${r.cp} ${r.ville} · ${r.motif}`));
     const badType = jobsR.filter((r) => rdvTypes(r).some((c) => !typeOf(c)));
-    if (badType.length) throw new Error('Type d’intervention inconnu pour ' + badType.map((r) => esc(r.patient)).join(', '));
+    if (badType.length) throw new Error('Type d’intervention inconnu pour ' + badType.map((r) => esc(patientLib(r))).join(', '));
 
     alertMsg(msg, 'Calcul des tournées…');
     const sf = 1 / (1 + (Number(p.coef) || 0) / 100);
@@ -1062,7 +1071,7 @@ function renderResult() {
       const wait = s.waiting_time > 60 ? ` · attente ${Math.round(s.waiting_time / 60)} min` : '';
       const inf = infoTitle(rd);
       return `<li class="pick" data-job="${s.job}" tabindex="0" title="Voir sur la carte"><span class="n" style="background:${col}">${n}</span><span class="t">${s2hm(s.arrival)}</span>
-        <span><b>${esc(rd.patient)}</b> <span class="w">· ${esc(rd.ville)} · ${esc(rdvTypeNom(rd))}${rd.adresse ? ' · ' + esc(rd.adresse) : ''}${wait}</span>${inf ? `<details class="infos"><summary>Infos d'accès</summary>${rdvInfos(rd).map(([k, v]) => `<div><span class="hint">${esc(k)}</span> ${esc(v)}</div>`).join('')}</details>` : ''}</span>
+        <span><b>${esc(patientLib(rd))}</b> <span class="w">· ${esc(rd.ville)} · ${esc(rdvTypeNom(rd))}${rd.adresse ? ' · ' + esc(rd.adresse) : ''}${wait}</span>${inf ? `<details class="infos"><summary>Infos d'accès</summary>${rdvInfos(rd).map(([k, v]) => `<div><span class="hint">${esc(k)}</span> ${esc(v)}</div>`).join('')}</details>` : ''}</span>
         <span class="badge ${c.badge}" title="${esc(rdvWindowLabel(rd))}">${rd.hDeb ? esc(rd.hDeb + '–' + rd.hFin) : c.nom}</span></li>`;
     }).join('');
     return `<section class="route"><div class="route-h"><div class="who"><span class="dot" style="background:${col}"></span><b>${esc(a.nom)}</b><span>${esc(d.nom)}</span></div>
@@ -1108,7 +1117,7 @@ function renderUnassigned() {
   });
   $('#t-unassigned').innerHTML = sorted.map(({ rd, job, why }) => {
     const c = crenOf(rd.cren);
-    return `<tr${job ? ` class="pick" data-job="${job}" tabindex="0" title="Voir sur la carte"` : ''}><td class="mono">${esc(frDate(rd.date))}</td><td><b>${esc(rd.patient)}</b></td><td class="mono">${esc(rd.cp)}</td><td>${esc(rd.ville || '?')}</td><td>${esc(rd.adresse)}</td>
+    return `<tr${job ? ` class="pick" data-job="${job}" tabindex="0" title="Voir sur la carte"` : ''}><td class="mono">${esc(frDate(rd.date))}</td><td><b>${esc(patientLib(rd))}</b></td><td class="mono">${esc(rd.cp)}</td><td>${esc(rd.ville || '?')}</td><td>${esc(rd.adresse)}</td>
       <td>${esc(rdvTypeNom(rd))}</td><td><span class="badge ${c.badge}" title="${esc(rdvWindowLabel(rd))}">${rd.hDeb ? esc(rd.hDeb + '–' + rd.hFin) : c.nom}</span></td><td>${esc(rd.amdActuel)}</td><td class="hint">${esc(why)}</td></tr>`;
   }).join('');
   if (pickedJob != null) $$(`#t-unassigned .pick[data-job="${pickedJob}"]`).forEach((x) => x.classList.add('sel'));
@@ -1137,7 +1146,7 @@ function drawResultMap(R) {
       if (s.type === 'job') {
         n++; const rd = R.rdv[s.job - 1];
         markersR[s.job] = L.marker([s.location[1], s.location[0]], { icon: pinIcon(n, col) })
-          .bindTooltip(`<b>${esc(rd.patient)}</b> · ${esc(rd.ville)}<br>${esc(a.nom)} · n° ${n} · ${s2hm(s.arrival)}`)
+          .bindTooltip(`<b>${esc(patientLib(rd))}</b> · ${esc(rd.ville)}<br>${esc(a.nom)} · n° ${n} · ${s2hm(s.arrival)}`)
           .on('click', () => pickJob(s.job, true)).addTo(layerR);
         jobVehR[s.job] = r.vehicle;
       }
@@ -1147,7 +1156,7 @@ function drawResultMap(R) {
   R.res.unassigned.forEach((u) => {
     const rd = R.rdv[u.id - 1]; if (!rd || !rd.geo || rd.geo.none) return;
     markersR[u.id] = L.marker([rd.geo.lat, rd.geo.lon], { icon: pinIcon('!', '#8a94a3') })
-      .bindTooltip(`<b>${esc(rd.patient)}</b> · ${esc(rd.ville)}<br>Non affecté`)
+      .bindTooltip(`<b>${esc(patientLib(rd))}</b> · ${esc(rd.ville)}<br>Non affecté`)
       .on('click', () => pickJob(u.id, true)).addTo(layerR);
   });
   Object.entries(markersR).forEach(([job, m]) => m
@@ -1217,11 +1226,11 @@ function exportCsv() {
     const r = R.res.routes.find((x) => x.vehicle === i + 1); if (!r) return; let n = 0;
     r.steps.filter((s) => s.type === 'job').forEach((s) => {
       n++; const rd = R.rdv[s.job - 1];
-      lines.push([frDate(R.date), a.nom, n, s2hm(s.arrival), rd.idRdv || '', rd.patient, rd.cp, rd.ville, rd.adresse, rdvTypeNom(rd), rdvWindowLabel(rd), Math.round((s.waiting_time || 0) / 60), infoTitle(rd).replace(/\n/g, ' | ')].map(q).join(';'));
+      lines.push([frDate(R.date), a.nom, n, s2hm(s.arrival), rd.idRdv || '', patientLib(rd), rd.cp, rd.ville, rd.adresse, rdvTypeNom(rd), rdvWindowLabel(rd), Math.round((s.waiting_time || 0) / 60), infoTitle(rd).replace(/\n/g, ' | ')].map(q).join(';'));
     });
   });
-  (R.excluded || []).forEach((rd) => { lines.push([frDate(R.date), 'ÉCARTÉ : ' + (rd.motif || 'adresse introuvable'), '', '', rd.idRdv || '', rd.patient, rd.cp, rd.ville, rd.adresse, rdvTypeNom(rd), rdvWindowLabel(rd), '', infoTitle(rd).replace(/\n/g, ' | ')].map(q).join(';')); });
-  R.res.unassigned.forEach((u) => { const rd = R.rdv[u.id - 1]; lines.push([frDate(R.date), 'NON AFFECTÉ', '', '', rd.idRdv || '', rd.patient, rd.cp, rd.ville, rd.adresse, rdvTypeNom(rd), rdvWindowLabel(rd), '', infoTitle(rd).replace(/\n/g, ' | ')].map(q).join(';')); });
+  (R.excluded || []).forEach((rd) => { lines.push([frDate(R.date), 'ÉCARTÉ : ' + (rd.motif || 'adresse introuvable'), '', '', rd.idRdv || '', patientLib(rd), rd.cp, rd.ville, rd.adresse, rdvTypeNom(rd), rdvWindowLabel(rd), '', infoTitle(rd).replace(/\n/g, ' | ')].map(q).join(';')); });
+  R.res.unassigned.forEach((u) => { const rd = R.rdv[u.id - 1]; lines.push([frDate(R.date), 'NON AFFECTÉ', '', '', rd.idRdv || '', patientLib(rd), rd.cp, rd.ville, rd.adresse, rdvTypeNom(rd), rdvWindowLabel(rd), '', infoTitle(rd).replace(/\n/g, ' | ')].map(q).join(';')); });
   download(`tournees_${R.date}.csv`, '﻿' + lines.join('\r\n'), 'text/csv;charset=utf-8');
   J.info('action', 'Export des tournées', `tournees_${R.date}.csv · ${lines.length - 1} ligne${lines.length > 2 ? 's' : ''}`);
 }
@@ -1294,7 +1303,7 @@ window.OptiApp = {
   hasResult: (iso) => !!state.results[iso],
   setDate(iso) { if (iso && iso !== state.date) { state.date = iso; save(); alertMsg('#r-msg', ''); renderResult(); } },
   typeOf, depotOf, crenOf, hm2s, longDate, frDate,
-  rdvWindow: (rd) => rdvWindow(rd), rdvWindowLabel: (rd) => rdvWindowLabel(rd), rdvTypeNom, rdvO2, rdvInfos,
+  rdvWindow: (rd) => rdvWindow(rd), rdvWindowLabel: (rd) => rdvWindowLabel(rd), rdvTypeNom, rdvO2, rdvInfos, patientLib,
   vehicleWindow: (a) => vehicleWindow(a, state.params),
   pickedJob: () => pickedJob,
   selectJob, hoverJob,
