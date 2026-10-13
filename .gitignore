@@ -13,3 +13,5 @@ node_modules/
 # Fichiers de travail déposés sur le serveur
 test.json
 *.patch
+# Fichiers CSV : les exports Isadom restent sur le poste et sont importés via le site
+*.csv
