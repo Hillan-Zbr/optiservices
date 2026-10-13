@@ -386,7 +386,8 @@ function renderPlan() {
     <td><button class="icon-btn" data-rdv-del="${i}" type="button" aria-label="Supprimer ce RDV">×</button></td></tr>`; }).join('')
     : '<tr><td colspan="10" class="empty">Aucun RDV. Importez un fichier CSV, ajoutez un RDV ou chargez l\'exemple.</td></tr>';
   if (state.rdv.length && !order.length) $('#t-rdv').innerHTML = '<tr><td colspan="10" class="empty">Aucun RDV ne correspond à la recherche.</td></tr>';
-  const filtering = Object.values(rdvFilter).some((v) => v && v.trim());
+  $$('.dd-btn').forEach((b) => { const on = !!rdvSel[b.dataset.dd]; b.classList.toggle('on', on); b.title = on ? 'Filtre actif : modifier' : 'Filtrer par valeur'; });
+  const filtering = Object.values(rdvFilter).some((v) => v && v.trim()) || Object.keys(rdvSel).length > 0;
   if (filtering) $('#c-rdv').textContent += ` · ${order.length} trouvé${order.length > 1 ? 's' : ''}`;
 
   $('#t-csvfmt').innerHTML = CSV_COLS.map((c) => `<tr><td class="mono"><b>${c[0]}</b></td><td>${c[1]}</td><td>${esc(c[2])}</td><td class="mono">${esc(c[3])}</td></tr>`).join('')
@@ -405,14 +406,87 @@ const FILTER_TEXT = {
   amd: (r) => [r.amdActuel, r.amdCode].join(' '),
   geo: (r) => geoText(r.geo)
 };
-function rdvMatches(r) {
+function rdvMatches(r, sauf) {
   return Object.entries(rdvFilter).every(([k, v]) => {
     const terms = norm(v).split(' ').filter(Boolean);
     if (!terms.length) return true;
     const txt = norm(FILTER_TEXT[k](r));
     return terms.every((t) => txt.includes(t));
+  }) && Object.entries(rdvSel).every(([k, sel]) => k === sauf || sel.has(DD_VAL[k](r)));
+}
+/* liste déroulante des valeurs dans l'en-tête des colonnes, comme le filtre automatique d'Excel */
+const rdvSel = {}; // colonne → Set des valeurs cochées ; colonne absente = pas de filtre
+const geoVal = (g) => (!g ? 'À localiser' : g.horsZone ? 'Hors zone carte' : g.none ? 'Introuvable' : g.src ? (g.src === 'w3w' ? 'Isadom (what3words)' : 'Isadom (coordonnées)') : 'Localisé (BAN)');
+const DD_VAL = {
+  date: (r) => r.date || '',
+  patient: (r) => r.patient || '',
+  cp: (r) => r.cp || '', ville: (r) => r.ville || '', adresse: (r) => r.adresse || '',
+  type: (r) => rdvTypeNom(r),
+  cren: (r) => crenOf(r.cren).nom,
+  amd: (r) => r.amdActuel || '',
+  geo: (r) => geoVal(r.geo)
+};
+const ddLabel = (k, v) => (v === '' ? '(Vides)' : k === 'date' ? frDate(v) : v);
+let ddCol = null;
+function ddClose() { const p = $('#dd-pop'); if (p) p.remove(); ddCol = null; }
+function ddOpen(btn) {
+  const k = btn.dataset.dd;
+  if (ddCol === k) { ddClose(); return; }
+  ddClose(); ddCol = k;
+  // valeurs des RDV qui passent les filtres des autres colonnes ; les vides en dernier
+  const vals = [...new Set(state.rdv.filter((r) => rdvMatches(r, k)).map(DD_VAL[k]))]
+    .sort((a, b) => (a === '' ? 1 : b === '' ? -1 : a.localeCompare(b, 'fr', { numeric: true, sensitivity: 'base' })));
+  const sel = rdvSel[k];
+  const pop = document.createElement('div');
+  pop.id = 'dd-pop'; pop.className = 'dd-pop';
+  pop.setAttribute('role', 'dialog'); pop.setAttribute('aria-label', 'Filtrer par valeur');
+  pop.innerHTML = `<input type="search" class="dd-q" placeholder="Rechercher…" aria-label="Rechercher une valeur">
+    <div class="dd-list"><label class="dd-all"><input type="checkbox" data-dd-all> (Tout sélectionner)</label>
+    ${vals.map((v) => `<label data-txt="${esc(norm(ddLabel(k, v)))}"><input type="checkbox" data-dd-v="${esc(v)}" ${!sel || sel.has(v) ? 'checked' : ''}> ${esc(ddLabel(k, v))}</label>`).join('') || '<p class="hint">Aucune valeur.</p>'}</div>
+    <div class="dd-foot"><button class="btn2" type="button" data-dd-clear ${sel ? '' : 'disabled'}>Effacer le filtre</button><span></span><button class="btn2" type="button" data-dd-no>Annuler</button><button class="btn" type="button" data-dd-ok>OK</button></div>`;
+  document.body.appendChild(pop);
+  const b = btn.getBoundingClientRect();
+  pop.style.top = (b.bottom + window.scrollY + 4) + 'px';
+  pop.style.left = Math.max(window.scrollX + 8, Math.min(b.left + window.scrollX, window.scrollX + document.documentElement.clientWidth - pop.offsetWidth - 8)) + 'px';
+  const boxes = () => $$('[data-dd-v]', pop).filter((x) => !x.closest('label').hidden);
+  const majTout = () => {
+    const bx = boxes(); const n = bx.filter((x) => x.checked).length; const all = $('[data-dd-all]', pop);
+    all.checked = bx.length > 0 && n === bx.length; all.indeterminate = n > 0 && n < bx.length;
+    $('[data-dd-ok]', pop).disabled = !n;
+  };
+  majTout();
+  $('.dd-q', pop).focus();
+  pop.addEventListener('input', (e) => {
+    if (!e.target.classList.contains('dd-q')) return;
+    // comme Excel : une recherche ne coche que les valeurs trouvées
+    const terms = norm(e.target.value).split(' ').filter(Boolean);
+    $$('[data-dd-v]', pop).forEach((x) => {
+      const l = x.closest('label'); l.hidden = !terms.every((t) => l.dataset.txt.includes(t));
+      x.checked = terms.length ? !l.hidden : (!sel || sel.has(x.dataset.ddV));
+    });
+    majTout();
+  });
+  pop.addEventListener('change', (e) => {
+    if (e.target.matches('[data-dd-all]')) boxes().forEach((x) => { x.checked = e.target.checked; });
+    majTout();
+  });
+  pop.addEventListener('click', (e) => {
+    const t = e.target;
+    if (t.matches('[data-dd-no]')) { ddClose(); btn.focus(); return; }
+    if (t.matches('[data-dd-clear]')) { delete rdvSel[k]; ddClose(); renderPlan(); btn.focus(); return; }
+    if (t.matches('[data-dd-ok]')) {
+      const coches = boxes().filter((x) => x.checked).map((x) => x.dataset.ddV);
+      if (coches.length === vals.length) delete rdvSel[k]; else rdvSel[k] = new Set(coches);
+      ddClose(); renderPlan(); btn.focus();
+    }
+  });
+  pop.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { ddClose(); btn.focus(); }
+    if (e.key === 'Enter' && e.target.classList.contains('dd-q')) { e.preventDefault(); const ok = $('[data-dd-ok]', pop); if (!ok.disabled) ok.click(); }
   });
 }
+document.addEventListener('mousedown', (e) => { if (ddCol && !e.target.closest('#dd-pop, .dd-btn')) ddClose(); });
+window.addEventListener('resize', ddClose);
 function resetDelZone() {
   $('#del-zone').innerHTML = '<button class="btn2 danger" id="rdv-clear" type="button">Tout supprimer</button>';
 }
@@ -461,6 +535,8 @@ function bindPlan() {
   });
   v.addEventListener('click', (e) => {
     const t = e.target;
+    const dd = t.closest('.dd-btn');
+    if (dd) { ddOpen(dd); return; }
     const ad = t.closest('[data-amd-del]');
     if (ad) { const [a] = state.amd.splice(Number(ad.dataset.amdDel), 1); J.info('action', 'AMD retiré', a.nom + (a.code ? ' (' + a.code + ')' : '')); save(); renderPlan(); return; }
     const rd = t.closest('[data-rdv-del]');
@@ -483,6 +559,7 @@ function bindPlan() {
     if (t.id === 'amd-clear-no') { resetAmdDelZone(); }
     if (t.id === 'rdv-filter-clear') {
       Object.keys(rdvFilter).forEach((k) => delete rdvFilter[k]);
+      Object.keys(rdvSel).forEach((k) => delete rdvSel[k]);
       $$('[data-filter]').forEach((x) => { x.value = ''; });
       renderPlan();
     }
