@@ -64,6 +64,7 @@ td input,td select{min-width:70px}
 .tbl th{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600;text-align:left;padding:8px;border-bottom:1px solid var(--line);white-space:nowrap}
 .tbl td{padding:6px 8px;border-bottom:1px solid var(--line2);font-size:14px;vertical-align:middle}
 .tbl .num{text-align:right}
+.tbl .gras{font-weight:700}
 .tbl tr.off td{opacity:.55}
 
 .tbl.sortable th button{all:unset;cursor:pointer;display:inline-flex;align-items:center;gap:4px}
