@@ -9,8 +9,8 @@ Installé sur le serveur Docker du réseau local, dans /srv/optiservices (clone 
                        COMPOSE_FILE=docker-compose.yml pour ignorer docker-compose.override.yml (réservé au VPS)
 
 Cycle de mise à jour :
-  1. développement sur le poste, dans une branche feature/<sujet> ou fix/<sujet>, tests : node tests/*.test.mjs
-  2. push de la branche sur GitHub, pull request puis fusion dans main
+  1. développement sur le poste, directement sur main (branche unique), tests : node tests/*.test.mjs
+  2. commit puis push de main sur GitHub
   3. sur le serveur :
        cd /srv/optiservices
        git pull
