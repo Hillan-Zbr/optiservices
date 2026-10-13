@@ -8,3 +8,8 @@ vroom-conf/access.log
 *.zip
 # Outils
 node_modules/
+# Configuration propre à chaque serveur (COMPOSE_FILE, secrets à venir)
+.env
+# Fichiers de travail déposés sur le serveur
+test.json
+*.patch
