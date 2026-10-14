@@ -91,7 +91,9 @@ function compute() {
   const nonAffectes = opt.nonAffectes.map((u) => {
     const rd = R.rdv[Number(u.jobId) - 1];
     return { key: 'j' + u.jobId, jobId: u.jobId, rd, motif: motif(rd, Number(u.jobId)) };
-  }).concat((R.excluded || []).map((rd, i) => ({ key: 'x' + i, rd, motif: rd.motif || MOTIFS.adresse })));
+  }).concat((R.excluded || []).map((rd, i) => ({ key: 'x' + i, rd, motif: rd.motif || MOTIFS.adresse })))
+    // RDV d'un AMD non prévu (absent, inactif, inconnu, antenne hors test) : retirés du calcul, mais à montrer
+    .concat((R.horsAmd || []).map((rd, i) => ({ key: 'h' + i, rd, motif: `AMD non prévu (${rd.amdActuel || 'aucun'}) : ${rd.motifAmd || 'hors optimisation'}` })));
   current = { R, opt, act, nonAffectes };
 }
 
