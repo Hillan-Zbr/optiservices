@@ -1014,11 +1014,15 @@ async function optimize() {
         time_windows: [rdvWindow(r, p)], skills: [idx >= 0 ? 100 + idx : SKILL_SANS_AMD]
       };
     });
-    let req, res;
+    // RDV d'un même patient chez le même AMD à la même adresse : un seul job VROOM, pour qu'ils se suivent
+    const cleGroupe = (r) => { const pat = String(r.patientCode || r.patient || '').trim().toUpperCase(); return pat ? amdDuRdv(r, amds).idx + '|' + pat : ''; };
+    let req, res, jobs, groupes;
     // un RDV qu'OSRM ne sait pas rejoindre fait échouer tout le calcul : on l'écarte et on relance
     for (let essai = 0; ; essai++) {
-      req = { vehicles, jobs: buildJobs(), options: { g: true } };
-      try { res = await callVroom(req); break; } catch (e) {
+      jobs = buildJobs();
+      groupes = OptiRegroupe.grouper(jobsR.map((r, j) => ({ cle: cleGroupe(r), lon: r.geo.lon, lat: r.geo.lat, fenetre: jobs[j].time_windows[0] })));
+      req = { vehicles, jobs: OptiRegroupe.fusionnerJobs(jobs, groupes), options: { g: true } };
+      try { res = OptiRegroupe.eclaterReponse(await callVroom(req), jobs, groupes); break; } catch (e) {
         const m = /near location \[(-?[\d.]+),\s*(-?[\d.]+)\]/.exec(e.message || '');
         const lon = m && Number(m[1]), lat = m && Number(m[2]);
         const bad = m ? jobsR.filter((r) => Math.abs(r.geo.lon - lon) < 1e-5 && Math.abs(r.geo.lat - lat) < 1e-5) : [];
