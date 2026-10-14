@@ -163,6 +163,8 @@ function load() {
   const sansCode = (rd) => { const suf = rd.patientCode ? ' (' + rd.patientCode + ')' : ''; if (suf && String(rd.patient || '').endsWith(suf)) rd.patient = rd.patient.slice(0, -suf.length); };
   state.rdv.forEach(sansCode);
   Object.values(state.results).forEach((R) => [R.rdv, R.excluded, R.horsAmd].forEach((l) => (l || []).forEach(sansCode)));
+  // 14/10/2026 : cache du géocodage en cascade (clés « v2| ») ; l'ancien cache, échecs compris, est oublié
+  Object.keys(state.geo).forEach((k) => { if (!k.startsWith('v2|')) delete state.geo[k]; });
 }
 /* complète une configuration enregistrée avant l'import Isadom (créneau Journée, antennes Isadom, coefficient multi-types) */
 function migrateParams(p) {
@@ -215,18 +217,26 @@ function route() {
 }
 
 /* ---------- géocodage (BAN via Géoplateforme) ---------- */
-async function geocode(q, postcode) {
-  const key = norm(q) + '|' + (postcode || '');
+/* une recherche BAN : jusqu'à 5 résultats, mis en cache dans state.geo */
+async function chercherBan({ q, postcode, type }) {
+  const key = 'v2|' + norm(q) + '|' + (postcode || '') + '|' + (type || '');
   if (state.geo[key]) return state.geo[key];
-  let url = '/geocode/search?limit=1&q=' + encodeURIComponent(q);
+  let url = '/geocode/search?limit=5&q=' + encodeURIComponent(q);
   if (postcode) url += '&postcode=' + encodeURIComponent(postcode);
+  if (type) url += '&type=' + encodeURIComponent(type);
   const r = await fetch(url);
+  if (r.status === 400) return []; // requête refusée par la BAN (trop courte, caractères) : rien à trouver
   if (!r.ok) throw new Error('Géocodage indisponible (HTTP ' + r.status + ')');
   const j = await r.json();
-  const f = j.features && j.features[0];
-  const res = f ? { lon: f.geometry.coordinates[0], lat: f.geometry.coordinates[1], label: f.properties.label, score: f.properties.score } : { none: true };
+  const res = (j.features || []).map((f) => ({ lon: f.geometry.coordinates[0], lat: f.geometry.coordinates[1], label: f.properties.label, score: f.properties.score,
+    type: f.properties.type, name: f.properties.name, city: f.properties.city, postcode: f.properties.postcode }));
   state.geo[key] = res;
   return res;
+}
+/* premier résultat d'une recherche simple (antennes, test de trajet) */
+async function geocode(q, postcode) {
+  const f = (await chercherBan({ q, postcode }))[0];
+  return f ? { lon: f.lon, lat: f.lat, label: f.label, score: f.score } : { none: true };
 }
 /* zone couverte par la carte OSRM (extrait PACA + Corse) : un point hors zone fait échouer tout le calcul VROOM */
 const ZONE_CARTE = [
@@ -235,11 +245,15 @@ const ZONE_CARTE = [
 ];
 const inZone = (g) => !!g && !g.none && ZONE_CARTE.some((z) => g.lat >= z.lat[0] && g.lat <= z.lat[1] && g.lon >= z.lon[0] && g.lon <= z.lon[1]);
 const MOTIF_HORS_ZONE = 'hors zone de la carte (PACA / Corse)';
+const MOTIF_COMMUNE = 'adresse localisée seulement à la commune';
+/* RDV : recherche en cascade (web/js/geo/geocode-core.js). Une position à la commune seulement
+   est gardée (lat/lon) mais marquée none : le RDV est écarté du calcul. v: 2 = géocodé en cascade */
 async function geocodeRdv(r) {
-  const q = r.adresse ? r.adresse + ' ' + r.ville : r.ville;
-  const g = await geocode(q, r.cp);
-  r.geo = g.none ? { none: true } : inZone(g) ? g : Object.assign({}, g, { none: true, horsZone: true });
+  const g = await OptiGeocode.localise(r, chercherBan, { dansZone: inZone });
+  r.geo = !g ? { none: true, v: 2 } : Object.assign(g, { v: 2 }, g.precision === 'commune' ? { none: true, commune: true } : {});
 }
+/* à (re)géocoder : sans position, ou géocodé avant la cascade (les coordonnées Isadom ne sont pas touchées) */
+const aGeocoder = (r) => !r.geo || (!r.geo.src && r.geo.v !== 2);
 async function geocodeDepot(d) {
   const cp = (d.adr.match(/\b\d{5}\b/) || [])[0];
   const g = await geocode(d.adr, cp);
@@ -255,10 +269,13 @@ async function pool(items, fn, n = 5) {
 function geoBadge(g) {
   if (!g) return '<span class="geo no">À localiser</span>';
   if (g.horsZone) return `<span class="geo ko" title="${esc(g.label || '')}">Hors zone carte</span>`;
+  if (g.commune) return `<span class="geo ko" title="Seule la commune a été trouvée : ${esc(g.label || '')}">Commune seulement</span>`;
   if (g.none) return '<span class="geo ko">Introuvable</span>';
   if (g.src) return `<span class="geo ok" title="${esc(g.label)}">Isadom${g.src === 'w3w' ? ' (W3W)' : ''}</span>`;
-  const cls = g.score >= 0.6 ? 'ok' : 'low';
-  return `<span class="geo ${cls}" title="${esc(g.label)} · score ${g.score.toFixed(2)}">${cls === 'ok' ? 'Localisé' : 'À vérifier'}</span>`;
+  const title = `${esc(g.label)} · score ${g.score.toFixed(2)}${g.etape ? ' · ' + esc(g.etape) : ''}`;
+  if (g.score < 0.6) return `<span class="geo low" title="${title}">À vérifier</span>`;
+  if (g.precision === 'rue') return `<span class="geo low" title="${title} · numéro non trouvé, point placé sur la voie">Rue seulement</span>`;
+  return `<span class="geo ok" title="${title}">Localisé</span>`;
 }
 
 /* lignes du tableau des RDV écartés (écran Planification : prévision ; écran Résultat : résultat) */
@@ -268,7 +285,7 @@ function ecartesRows(list) {
     <td class="mono">${esc(rd.hDeb ? rd.hDeb + '–' + rd.hFin : crenOf(rd.cren).nom)}</td><td>${esc(rd.amdActuel)}</td>
     <td><b style="color:var(--danger)">${esc(rd.motif)}</b>${rd.geo && rd.geo.label ? `<div class="hint">localisé : ${esc(rd.geo.label)}</div>` : ''}</td></tr>`).join('');
 }
-const motifGeo = (rd) => (rd.geo && rd.geo.horsZone ? MOTIF_HORS_ZONE : rd.geo && !rd.geo.none && !inZone(rd.geo) ? MOTIF_HORS_ZONE : 'adresse introuvable');
+const motifGeo = (rd) => (rd.geo && rd.geo.horsZone ? MOTIF_HORS_ZONE : rd.geo && rd.geo.commune ? MOTIF_COMMUNE : rd.geo && !rd.geo.none && !inZone(rd.geo) ? MOTIF_HORS_ZONE : 'adresse introuvable');
 
 /* ---------- 1. paramètres ---------- */
 function renderParams() {
@@ -434,7 +451,7 @@ function renderPlan() {
 }
 /* recherche par colonne dans le tableau des RDV : chaque mot saisi doit figurer dans la colonne (sans accents ni casse) */
 const rdvFilter = {};
-const geoText = (g) => (!g ? 'à localiser' : g.horsZone ? 'hors zone carte' : g.none ? 'introuvable' : g.src ? 'isadom ' + (g.src === 'w3w' ? 'w3w what3words' : 'coordonnees') + ' localise' : 'localise ban ' + (g.label || ''));
+const geoText = (g) => (!g ? 'à localiser' : g.horsZone ? 'hors zone carte' : g.commune ? 'commune seulement ' + (g.label || '') : g.none ? 'introuvable' : g.precision === 'rue' ? 'rue seulement localise ban ' + (g.label || '') : g.src ? 'isadom ' + (g.src === 'w3w' ? 'w3w what3words' : 'coordonnees') + ' localise' : 'localise ban ' + (g.label || ''));
 const FILTER_TEXT = {
   date: (r) => frDate(r.date) + ' ' + r.date,
   code: (r) => r.patientCode,
@@ -456,7 +473,7 @@ function rdvMatches(r, sauf) {
 }
 /* liste déroulante des valeurs dans l'en-tête des colonnes, comme le filtre automatique d'Excel */
 const rdvSel = {}; // colonne → Set des valeurs cochées ; colonne absente = pas de filtre
-const geoVal = (g) => (!g ? 'À localiser' : g.horsZone ? 'Hors zone carte' : g.none ? 'Introuvable' : g.src ? (g.src === 'w3w' ? 'Isadom (what3words)' : 'Isadom (coordonnées)') : 'Localisé (BAN)');
+const geoVal = (g) => (!g ? 'À localiser' : g.horsZone ? 'Hors zone carte' : g.commune ? 'Commune seulement' : g.none ? 'Introuvable' : g.precision === 'rue' ? 'Rue seulement (BAN)' : g.src ? (g.src === 'w3w' ? 'Isadom (what3words)' : 'Isadom (coordonnées)') : 'Localisé (BAN)');
 const DD_VAL = {
   date: (r) => r.date || '',
   code: (r) => r.patientCode || '',
@@ -910,7 +927,7 @@ function importIsadom(rows, head, name) {
   if (seen.size && !state.rdv.some((r) => r.date === state.date)) state.date = [...dates].sort()[0];
   save(); renderPlan();
   // localise tout de suite les RDV sans coordonnées Isadom, pour signaler dès l'import ceux qui seront écartés
-  const toGeo = [...seen.values()].filter((rd) => !rd.geo && rdvInScope(rd));
+  const toGeo = [...seen.values()].filter((rd) => aGeocoder(rd) && rdvInScope(rd));
   if (toGeo.length) {
     const st = document.createElement('p'); st.className = 'hint'; st.textContent = `Localisation de ${toGeo.length} adresse${toGeo.length > 1 ? 's' : ''} sans coordonnées Isadom…`;
     rep.appendChild(st);
@@ -982,13 +999,13 @@ async function optimize() {
     await pool(deps, geocodeDepot);
     // coordonnées déjà connues mais hors zone (import antérieur) : on retente par l'adresse
     day.forEach((r) => { if (r.geo && !r.geo.none && !inZone(r.geo)) delete r.geo; });
-    await pool(day.filter((r) => !r.geo), geocodeRdv);
+    await pool(day.filter(aGeocoder), geocodeRdv);
     save(); renderPlan();
     const badDep = amds.filter((a) => depotOf(a.depot).geo.none);
     if (badDep.length) throw new Error('Adresse introuvable pour : ' + [...new Set(badDep.map((a) => depotOf(a.depot).nom))].join(', ') + '. Corrigez-la dans les paramètres.');
     const jobsR = day.filter((r) => inZone(r.geo));
-    const excluded = day.filter((r) => !inZone(r.geo)).map((r) => Object.assign(clone(r), { motif: r.geo && r.geo.horsZone ? MOTIF_HORS_ZONE : 'adresse introuvable' }));
-    if (excluded.length) J.warn('optimisation', 'RDV écartés du calcul', `${excluded.length} RDV écarté${excluded.length > 1 ? 's' : ''} de l'optimisation du ${frDate(state.date)} (adresse introuvable ou hors carte)`, excluded.map((r) => `${rdvRef(r)} · ${r.cp} ${r.ville} · ${r.motif}`));
+    const excluded = day.filter((r) => !inZone(r.geo)).map((r) => Object.assign(clone(r), { motif: motifGeo(r) }));
+    if (excluded.length) J.warn('optimisation', 'RDV écartés du calcul', `${excluded.length} RDV écarté${excluded.length > 1 ? 's' : ''} de l'optimisation du ${frDate(state.date)} (adresse introuvable, localisée à la commune seulement ou hors carte)`, excluded.map((r) => `${rdvRef(r)} · ${r.cp} ${r.ville} · ${r.motif}`));
     const badType = jobsR.filter((r) => rdvTypes(r).some((c) => !typeOf(c)));
     if (badType.length) throw new Error('Type d’intervention inconnu pour ' + badType.map((r) => esc(patientLib(r))).join(', '));
 
