@@ -244,6 +244,7 @@ AMD02;MARTIN Julie;ARARD 04/05;matin;5;250</pre>
       <button class="btn" id="pl-go" type="button">Optimiser les tournées</button>
     </div>
   </div>
+  <p class="hint" id="pl-cible"></p>
   <p class="msg" id="pl-msg" hidden></p>
   <section class="card ecartes" id="pl-ecartes" hidden>
     <h2>RDV qui ne pourront pas être optimisés <span class="count" id="c-pl-ecartes"></span></h2>
@@ -271,6 +272,7 @@ AMD02;MARTIN Julie;ARARD 04/05;matin;5;250</pre>
         <button type="button" id="vue-carte" aria-pressed="true">Carte + liste</button>
         <button type="button" id="vue-agenda" aria-pressed="false">Agenda</button>
       </div>
+      <button class="btn2" id="r-stats" type="button">Stats d'optimisation</button>
       <button class="btn2" id="r-csv" type="button">Exporter en CSV (Excel)</button>
       <button class="btn2" id="r-print" type="button">Imprimer les feuilles de route</button>
     </div>
@@ -366,7 +368,20 @@ AMD02;MARTIN Julie;ARARD 04/05;matin;5;250</pre>
   </div>
 </dialog>
 
+<!-- ============ STATS D'OPTIMISATION ============ -->
+<dialog id="dlg-stats" class="dlg" aria-labelledby="st-titre">
+  <div class="dlg-h">
+    <div>
+      <h2 id="st-titre">Compte rendu de l'import de la journée</h2>
+      <p class="hint" id="st-sub"></p>
+    </div>
+    <button class="icon-btn" id="st-close" type="button" aria-label="Fermer">×</button>
+  </div>
+  <div class="dlg-b" id="st-body"></div>
+</dialog>
+
 <script src="vendor/leaflet/leaflet.js"></script>
+<script src="js/stats/stats-core.js"></script>
 <script src="js/journal/journal-core.js"></script>
 <script src="app.js"></script>
 <script type="module" src="js/agenda/agenda-main.js"></script>

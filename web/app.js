@@ -353,6 +353,8 @@ function alertMsg(sel, html, kind) {
 function renderPlan() {
   if (!state.date) state.date = nextWorkday();
   $('#pl-date').value = frDate(state.date);
+  const nCible = state.rdv.filter((r) => r.date === state.date && rdvInScope(r)).length;
+  $('#pl-cible').textContent = `Seule la journée du ${longDate(state.date)} sera optimisée : ${nCible} RDV sur les antennes du test. Une journée à la fois.`;
   const deps = state.params.depots;
   $('#c-amd').textContent = '· ' + state.amd.filter((a) => amdActif(a) && a.dispo !== 'absent').length;
   const amdOrder = ddTrier('amd', state.amd.map((a, i) => i).filter((i) => amdMatches(state.amd[i])));
@@ -918,6 +920,12 @@ async function optimize() {
   const onResult = location.hash === '#resultat';
   const msg = onResult ? '#r-msg' : '#pl-msg';
   const btn = onResult ? $('#r-opt') : $('#pl-go'); const p = state.params;
+  // une seule journée à la fois (POC) : la cible est la date affichée dans « Date planifiée »
+  if (!onResult) {
+    const iso = parseDate($('#pl-date').value);
+    if (!iso) { alertMsg(msg, 'Date planifiée invalide : saisir une date au format jj/mm/aaaa.', 'err'); $('#pl-date').focus(); return; }
+    if (iso !== state.date) { J.info('action', 'Date planifiée changée', frDate(iso)); state.date = iso; save(); renderPlan(); }
+  }
   const day = state.rdv.filter((r) => r.date === state.date && rdvInScope(r));
   if (!day.length) { alertMsg(msg, `Aucun RDV le ${frDate(state.date)} sur les antennes incluses dans le test.`, 'err'); J.warn('optimisation', 'Optimisation impossible', `Aucun RDV le ${frDate(state.date)} sur les antennes incluses dans le test`); return; }
   const amds = state.amd.filter((a) => amdActif(a) && a.dispo !== 'absent' && depotOf(a.depot) && depotOf(a.depot).actif);
@@ -995,6 +1003,7 @@ async function optimize() {
     if (res.unassigned.length) J.warn('optimisation', 'RDV non affectés', `${res.unassigned.length} RDV impossible${res.unassigned.length > 1 ? 's' : ''} à placer le ${frDate(state.date)}`, res.unassigned.map((u) => rdvRef(jobsR[u.id - 1])));
     alertMsg(msg, '');
     if (onResult) renderResult(); else location.hash = '#resultat';
+    openStats();
   } catch (err) {
     console.error(err);
     J.crit('optimisation', 'Échec de l’optimisation', `Journée du ${frDate(state.date)} : ${err.message || err}`);
@@ -1061,7 +1070,7 @@ function renderResult() {
   const R = state.results[state.date];
   const box = $('#r-routes');
   $('#r-opt-zone').hidden = !!R;
-  $('#r-csv').disabled = $('#r-print').disabled = !R;
+  $('#r-csv').disabled = $('#r-print').disabled = $('#r-stats').disabled = !R;
   if (!R) {
     const n = state.rdv.filter((r) => r.date === state.date).length;
     $('#r-titre').textContent = 'Tournées · ' + longDate(state.date);
@@ -1127,17 +1136,48 @@ function renderResult() {
   }).join('');
 
   // non affectés
-  const why = (rd) => {
-    const c = rdvWindow(rd);
-    if (!R.amds.some((a) => { const w = vehicleWindow(a, state.params); return w[0] < c[1] && w[1] > c[0]; })) return 'aucun AMD disponible sur ce créneau';
-    return 'créneau, heures ou km max trop serrés';
-  };
+  const why = motifNonAffecte(R);
   unRows = res.unassigned.map((u) => ({ rd: R.rdv[u.id - 1], job: u.id, why: why(R.rdv[u.id - 1]) }));
   renderUnassigned();
 
   drawResultMap(R);
   appBus.dispatchEvent(new CustomEvent('render'));
 }
+/* motif d'un RDV que VROOM n'a pas pu placer (la réponse VROOM n'en donne pas) */
+const motifNonAffecte = (R) => (rd) => {
+  const c = rdvWindow(rd);
+  if (!R.amds.some((a) => { const w = vehicleWindow(a, state.params); return w[0] < c[1] && w[1] > c[0]; })) return 'aucun AMD disponible sur ce créneau';
+  return 'créneau, heures ou km max trop serrés';
+};
+
+/* ---------- stats d'optimisation : compte rendu de la journée affichée ---------- */
+function openStats() {
+  const R = state.results[state.date]; const dlg = $('#dlg-stats');
+  if (!R || !window.OptiStats || !dlg) return;
+  const S = window.OptiStats.computeStats(R, { typesOf: rdvTypes, motifNonAffecte: motifNonAffecte(R) });
+  const types = (l) => (l.length ? `<div class="st-types">${l.map((t) => `<span title="${esc(typeLabel(t.code))}"><b class="mono">${esc(t.code)}</b> ${t.n}</span>`).join('')}</div>` : '<span class="hint">—</span>');
+  const kpi = (lib, val) => `<div><span>${lib}</span><b class="mono">${val}</b></div>`;
+  $('#st-titre').textContent = "Compte rendu de l'import de la journée du " + frDate(S.date);
+  $('#st-sub').textContent = `${longDate(S.date)} · optimisée le ${new Date(R.at).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}. Un RDV à plusieurs types de visite est compté dans chacun de ses types.`;
+  $('#st-body').innerHTML = `<div class="st-kpis">${kpi('RDV à planifier', S.nRdv)}${kpi('AMD disponibles', S.nAmd)}${kpi('AMD mobilisés', S.nAmdMobilises)}${kpi('RDV planifiés', S.planifies)}${kpi('RDV non planifiés', S.nonPlanifies.total)}${kpi('Kilométrage total', fmtKm(S.distance))}</div>
+    <h3>RDV à planifier par type de visite</h3>
+    <table class="tbl"><thead><tr><th>Type de visite</th><th class="num">RDV</th></tr></thead><tbody>
+      ${S.parType.map((t) => `<tr><td><b class="mono">${esc(t.code)}</b> ${esc((typeOf(t.code) || {}).nom || '')}</td><td class="num mono">${t.n}</td></tr>`).join('') || '<tr><td colspan="2" class="empty">Aucun RDV.</td></tr>'}
+    </tbody></table>
+    <h3>Répartition par AMD</h3>
+    <div class="scroll"><table class="tbl"><thead><tr><th>AMD</th><th>Antenne</th><th class="num">RDV</th><th>Types de visite</th><th class="num">Kilométrage</th><th class="num">Conduite</th></tr></thead><tbody>
+      ${S.amd.map((a) => `<tr><td><b>${esc(a.nom)}</b>${a.code ? ` <span class="hint mono">${esc(a.code)}</span>` : ''}</td><td>${esc((depotOf(a.depot) || { nom: a.depot }).nom)}</td><td class="num mono">${a.n}</td><td>${types(a.parType)}</td><td class="num mono">${a.n ? fmtKm(a.distance) : '—'}</td><td class="num mono">${a.n ? fmtDur(a.duration) : '—'}</td></tr>`).join('')}
+      <tr><td colspan="2"><b>Total</b></td><td class="num mono"><b>${S.planifies}</b></td><td></td><td class="num mono"><b>${fmtKm(S.distance)}</b></td><td class="num mono"><b>${fmtDur(S.duration)}</b></td></tr>
+    </tbody></table></div>
+    <h3>RDV non planifiés par motif · ${S.nonPlanifies.total}</h3>
+    ${S.nonPlanifies.parMotif.map((m) => `<details class="st-motif"><summary><b>${esc(m.motif)}</b> · ${m.n} RDV <span class="hint">(voir le détail)</span></summary>
+      <div class="scroll"><table class="tbl"><thead><tr><th>N° RDV</th><th>Code Pat.</th><th>Patient</th><th>CP</th><th>Ville</th><th>Type de visite</th><th>Créneau</th><th>AMD prévu</th><th>Étape</th></tr></thead><tbody>
+        ${m.liste.map(({ rd, etape }) => `<tr><td class="mono gras">${esc(rd.idRdv || '')}</td><td class="mono">${esc(rd.patientCode || '')}</td><td>${esc(rd.patient)}</td><td class="mono">${esc(rd.cp)}</td><td>${esc(rd.ville || '?')}</td><td>${esc(rdvTypeNom(rd))}</td><td class="mono">${esc(rd.hDeb ? rd.hDeb + '–' + rd.hFin : crenOf(rd.cren).nom)}</td><td>${esc(rd.amdActuel)}</td><td class="hint">${esc(etape)}</td></tr>`).join('')}
+      </tbody></table></div></details>`).join('') || '<p class="hint">Tous les RDV de la journée sont planifiés.</p>'}`;
+  if (!dlg.open) dlg.showModal();
+  J.info('action', "Stats d'optimisation consultées", 'Journée du ' + frDate(S.date), { rdv: S.nRdv, amd: S.nAmd, non_planifies: S.nonPlanifies.total });
+}
+
 let unRows = null;
 const unSort = { key: 'ville', dir: 1 };
 const unVal = {
@@ -1365,6 +1405,8 @@ J.info('systeme', 'Ouverture de l’application', `${state.rdv.length} RDV · ${
 bindParams();
 bindPlan();
 $('#r-csv').addEventListener('click', exportCsv);
+$('#r-stats').addEventListener('click', openStats);
+$('#st-close').addEventListener('click', () => $('#dlg-stats').close());
 $('#r-print').addEventListener('click', () => { J.info('action', 'Impression des feuilles de route', 'Journée du ' + frDate(state.date)); window.print(); });
 window.addEventListener('hashchange', route);
 route();

@@ -211,3 +211,16 @@ details.infos div{white-space:pre-wrap}
 .dd-foot span{flex:1}
 .dd-foot .btn,.dd-foot .btn2{padding:5px 10px;font-size:13px}
 .dd-foot .btn:disabled{cursor:default}
+
+/* Stats d'optimisation (compte rendu de la journée) */
+.st-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:16px 0}
+.st-kpis div{border:1px solid var(--line);border-radius:8px;padding:10px 12px}
+.st-kpis span{display:block;font-size:13px;color:var(--muted)}
+.st-kpis b{font-size:24px;font-weight:500}
+#st-body h3{margin:20px 0 8px;font-size:16px}
+.st-types{display:flex;flex-wrap:wrap;gap:6px}
+.st-types span{border:1px solid var(--line);border-radius:12px;padding:1px 8px;font-size:12px;white-space:nowrap}
+.st-types b{font-weight:600}
+.st-motif{border:1px solid var(--line);border-radius:8px;margin:8px 0;padding:8px 12px}
+.st-motif summary{cursor:pointer}
+.st-motif .tbl{margin-top:8px}
