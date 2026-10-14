@@ -59,3 +59,17 @@ test('résultat sans tournée ni écarté', () => {
   assert.equal(s.nonPlanifies.total, 0);
   assert.deepEqual(s.parType, []);
 });
+
+test('RDV sur des AMD non prévus : listés à part, hors totaux', () => {
+  const R2 = Object.assign({}, R, { horsAmd: [
+    { idRdv: '6', types: ['LIN'], amdActuel: 'AMD TEST C', motifAmd: 'AMD prévu inactif ou rattaché à une antenne hors test' },
+    { idRdv: '7', types: ['M'], amdActuel: 'AMD TEST C', motifAmd: 'AMD prévu inactif ou rattaché à une antenne hors test' },
+    { idRdv: '8', types: ['M'], amdActuel: '', motifAmd: 'aucun AMD prévu dans Isadom' }
+  ] });
+  const s = S.computeStats(R2, { typesOf, motifNonAffecte });
+  assert.equal(s.nRdv, 5);
+  assert.equal(s.nonPlanifies.total, 2);
+  assert.equal(s.horsAmd.total, 3);
+  assert.deepEqual(s.horsAmd.parAmd.map((g) => [g.amd, g.n]), [['AMD TEST C', 2], ['', 1]]);
+  assert.equal(S.computeStats(R, { typesOf, motifNonAffecte }).horsAmd.total, 0);
+});

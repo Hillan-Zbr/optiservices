@@ -162,7 +162,7 @@ function load() {
   // ancien libellé patient « NOM Prénom (code) » : le code est retiré du nom
   const sansCode = (rd) => { const suf = rd.patientCode ? ' (' + rd.patientCode + ')' : ''; if (suf && String(rd.patient || '').endsWith(suf)) rd.patient = rd.patient.slice(0, -suf.length); };
   state.rdv.forEach(sansCode);
-  Object.values(state.results).forEach((R) => [R.rdv, R.excluded].forEach((l) => (l || []).forEach(sansCode)));
+  Object.values(state.results).forEach((R) => [R.rdv, R.excluded, R.horsAmd].forEach((l) => (l || []).forEach(sansCode)));
 }
 /* complète une configuration enregistrée avant l'import Isadom (créneau Journée, antennes Isadom, coefficient multi-types) */
 function migrateParams(p) {
@@ -930,8 +930,8 @@ const sameAmd = (name, a) => { const n = norm(name); const m = norm(a.nom); retu
 /* AMD actuel d'un RDV : par code Isadom quand les deux sont connus, sinon par le nom */
 const amdMatch = (rd, a) => (rd.amdCode && a.code ? String(a.code).trim() === String(rd.amdCode).trim() : sameAmd(rd.amdActuel, a));
 /* Mode « AMD bloqué » (par défaut) : chaque RDV reste chez l'AMD affecté dans Isadom, VROOM ne calcule que l'ordre de passage.
-   Compétence VROOM 100 + i = AMD n° i ; un RDV sans AMD utilisable reçoit SKILL_SANS_AMD, qu'aucun véhicule ne possède :
-   VROOM le laisse non affecté au lieu de le donner à un collègue. */
+   Compétence VROOM 100 + i = AMD n° i. Les RDV sans AMD prévu sont retirés avant le calcul (R.horsAmd, compte rendu seul) ;
+   SKILL_SANS_AMD, qu'aucun véhicule ne possède, reste une sécurité : VROOM ne donne jamais un RDV à un collègue. */
 const SKILL_SANS_AMD = 99;
 const MOTIFS_AMD = {
   aucun: 'aucun AMD prévu dans Isadom',
@@ -963,7 +963,15 @@ async function optimize() {
   if (!day.length) { alertMsg(msg, `Aucun RDV le ${frDate(state.date)} sur les antennes incluses dans le test.`, 'err'); J.warn('optimisation', 'Optimisation impossible', `Aucun RDV le ${frDate(state.date)} sur les antennes incluses dans le test`); return; }
   const amds = state.amd.filter((a) => amdActif(a) && a.dispo !== 'absent' && depotOf(a.depot) && depotOf(a.depot).actif);
   if (!amds.length) { alertMsg(msg, 'Aucun AMD actif et disponible partant d’un point de départ inclus dans le test.', 'err'); J.warn('optimisation', 'Optimisation impossible', `Aucun AMD disponible le ${frDate(state.date)} sur les antennes du test`); return; }
+  // RDV affectés dans Isadom à un AMD non prévu (inactif, absent, inconnu, sans AMD) : hors optimisation, signalés dans le compte rendu
+  const horsAmd = [];
+  for (let k = day.length - 1; k >= 0; k--) {
+    const m = amdDuRdv(day[k], amds);
+    if (m.idx < 0) horsAmd.unshift(Object.assign(clone(day.splice(k, 1)[0]), { motifAmd: m.motif }));
+  }
+  if (!day.length) { alertMsg(msg, `Les ${horsAmd.length} RDV du ${frDate(state.date)} sont affectés à des AMD non prévus (inactifs, absents ou inconnus) : rien à optimiser.`, 'err'); J.warn('optimisation', 'Optimisation impossible', `Journée du ${frDate(state.date)} : aucun RDV sur un AMD prévu`, horsAmd.map((r) => `${rdvRef(r)} · AMD ${r.amdActuel || '—'} · ${r.motifAmd}`)); return; }
   J.info('optimisation', 'Optimisation lancée', `Journée du ${frDate(state.date)} · ${day.length} RDV · ${amds.length} AMD`);
+  if (horsAmd.length) J.warn('optimisation', 'RDV sur des AMD non prévus', `${horsAmd.length} RDV du ${frDate(state.date)} hors optimisation : leur AMD Isadom n'est pas prévu`, horsAmd.map((r) => `${rdvRef(r)} · AMD ${r.amdActuel || '—'} · ${r.motifAmd}`));
   const t0 = Date.now();
   if (btn) btn.disabled = true;
   try {
@@ -1023,7 +1031,7 @@ async function optimize() {
     // l'AMD retenu (ou le motif d'impossibilité) accompagne chaque RDV du résultat
     const rdvR = jobsR.map((r) => { const m = amdDuRdv(r, amds); return Object.assign(clone(r), { amdIdx: m.idx, motifAmd: m.motif || '' }); });
     // plus de 2e calcul « répartition libre » : le résultat retenu (envoyé à MJ2) respecte les affectations Isadom
-    state.results[state.date] = { date: state.date, at: new Date().toISOString(), mode: 'amd-bloque', amds: clone(amds), rdv: rdvR, excluded: clone(excluded), res, resAct: null, cmp: null };
+    state.results[state.date] = { date: state.date, at: new Date().toISOString(), mode: 'amd-bloque', amds: clone(amds), rdv: rdvR, excluded: clone(excluded), horsAmd, res, resAct: null, cmp: null };
     save();
     J.info('optimisation', 'Optimisation terminée', `Journée du ${frDate(state.date)} : ${res.routes.length} AMD mobilisé${res.routes.length > 1 ? 's' : ''} · ${fmtKm(res.summary.distance)} · ${fmtDur(res.summary.duration)} de conduite`,
       { mode: 'AMD bloqué (affectations Isadom conservées)', duree_calcul: ((Date.now() - t0) / 1000).toFixed(1) + ' s', rdv_planifies: jobsR.length - res.unassigned.length });
@@ -1230,7 +1238,7 @@ function openStats() {
   const kpi = (lib, val) => `<div><span>${lib}</span><b class="mono">${val}</b></div>`;
   $('#st-titre').textContent = "Compte rendu de l'import de la journée du " + frDate(S.date);
   $('#st-sub').textContent = `${longDate(S.date)} · optimisée le ${new Date(R.at).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}. Un RDV à plusieurs types de visite est compté dans chacun de ses types.`;
-  $('#st-body').innerHTML = `<div class="st-kpis">${kpi('RDV à planifier', S.nRdv)}${kpi('AMD disponibles', S.nAmd)}${kpi('AMD mobilisés', S.nAmdMobilises)}${kpi('RDV planifiés', S.planifies)}${kpi('RDV non planifiés', S.nonPlanifies.total)}${kpi('Kilométrage total', fmtKm(S.distance))}</div>
+  $('#st-body').innerHTML = `<div class="st-kpis">${kpi('RDV à planifier', S.nRdv)}${kpi('AMD disponibles', S.nAmd)}${kpi('AMD mobilisés', S.nAmdMobilises)}${kpi('RDV planifiés', S.planifies)}${kpi('RDV non planifiés', S.nonPlanifies.total)}${S.horsAmd.total ? kpi('RDV sur AMD non prévus', S.horsAmd.total) : ''}${kpi('Kilométrage total', fmtKm(S.distance))}</div>
     <h3>RDV à planifier par type de visite</h3>
     <table class="tbl"><thead><tr><th>Type de visite</th><th class="num">RDV</th></tr></thead><tbody>
       ${S.parType.map((t) => `<tr><td>${tvBadge(t.code)} ${esc((typeOf(t.code) || {}).nom || '')}</td><td class="num mono">${t.n}</td></tr>`).join('') || '<tr><td colspan="2" class="empty">Aucun RDV.</td></tr>'}
@@ -1244,10 +1252,16 @@ function openStats() {
     ${S.nonPlanifies.parMotif.map((m) => `<details class="st-motif"><summary><b>${esc(m.motif)}</b> · ${m.n} RDV <span class="hint">(voir le détail)</span></summary>
       <div class="scroll"><table class="tbl"><thead><tr><th>N° RDV</th><th>Code Pat.</th><th>Patient</th><th>CP</th><th>Ville</th><th>Type de visite</th><th>Créneau</th><th>AMD prévu</th><th>Étape</th></tr></thead><tbody>
         ${m.liste.map(({ rd, etape }) => `<tr><td class="mono gras">${esc(rd.idRdv || '')}</td><td class="mono">${esc(rd.patientCode || '')}</td><td>${esc(rd.patient)}</td><td class="mono">${esc(rd.cp)}</td><td>${esc(rd.ville || '?')}</td><td>${rdvTypeHtml(rd)}</td><td class="mono">${esc(rd.hDeb ? rd.hDeb + '–' + rd.hFin : crenOf(rd.cren).nom)}</td><td>${esc(rd.amdActuel)}</td><td class="hint">${esc(etape)}</td></tr>`).join('')}
-      </tbody></table></div></details>`).join('') || '<p class="hint">Tous les RDV de la journée sont planifiés.</p>'}`;
+      </tbody></table></div></details>`).join('') || '<p class="hint">Tous les RDV de la journée sont planifiés.</p>'}
+    ${S.horsAmd.total ? `<h3>RDV sur des AMD non prévus · ${S.horsAmd.total}</h3>
+    <p class="hint">Affectés dans Isadom à un AMD non retenu pour cette journée (inactif dans les paramètres, absent, inconnu ou non renseigné) : ils n'ont pas été optimisés. À reprendre dans Isadom ou en activant l'AMD.</p>
+    ${S.horsAmd.parAmd.map((g) => `<details class="st-motif"><summary><b>${esc(g.amd || '(sans AMD)')}</b> · ${g.n} RDV · <span class="hint">${esc(g.motif)}</span></summary>
+      <div class="scroll"><table class="tbl"><thead><tr><th>N° RDV</th><th>Code Pat.</th><th>Patient</th><th>CP</th><th>Ville</th><th>Type de visite</th><th>Créneau</th></tr></thead><tbody>
+        ${g.liste.map((rd) => `<tr><td class="mono gras">${esc(rd.idRdv || '')}</td><td class="mono">${esc(rd.patientCode || '')}</td><td>${esc(rd.patient)}</td><td class="mono">${esc(rd.cp)}</td><td>${esc(rd.ville || '?')}</td><td>${rdvTypeHtml(rd)}</td><td class="mono">${esc(rd.hDeb ? rd.hDeb + '–' + rd.hFin : crenOf(rd.cren).nom)}</td></tr>`).join('')}
+      </tbody></table></div></details>`).join('')}` : ''}`;
   statsCour = { R, S };
   if (!dlg.open) dlg.showModal();
-  J.info('action', "Stats d'optimisation consultées", 'Journée du ' + frDate(S.date), { rdv: S.nRdv, amd: S.nAmd, non_planifies: S.nonPlanifies.total });
+  J.info('action', "Stats d'optimisation consultées", 'Journée du ' + frDate(S.date), { rdv: S.nRdv, amd: S.nAmd, non_planifies: S.nonPlanifies.total, amd_non_prevus: S.horsAmd.total });
 }
 /* export de tous les RDV du compte rendu : planifiés (AMD, ordre, heure) puis non planifiés (motif, étape) */
 function exportStatsCsv() {
@@ -1261,6 +1275,7 @@ function exportStatsCsv() {
     r.steps.filter((s) => s.type === 'job').forEach((s, n) => ligne(R.rdv[s.job - 1], ['Planifié', a.nom, n + 1, s2hm(s.arrival), '', '']));
   });
   S.nonPlanifies.parMotif.forEach((m) => m.liste.forEach(({ rd, etape }) => ligne(rd, ['Non planifié', '', '', '', m.motif, etape])));
+  S.horsAmd.parAmd.forEach((g) => g.liste.forEach((rd) => ligne(rd, ['AMD non prévu', '', '', '', rd.motifAmd || g.motif, 'hors optimisation'])));
   const nom = `rdv_${R.date}.csv`;
   download(nom, '﻿' + lines.join('\r\n'), 'text/csv;charset=utf-8');
   J.info('action', 'Export des RDV du compte rendu', `${nom} · ${lines.length - 1} RDV`);

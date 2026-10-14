@@ -2,7 +2,8 @@
    Script classique chargé AVANT app.js. Expose window.OptiStats ; testable sous Node (module.exports).
 
    Entrée : le résultat enregistré d'une journée (state.results[date]) :
-     { date, amds, rdv, excluded, res: réponse VROOM }
+     { date, amds, rdv, excluded, horsAmd, res: réponse VROOM }
+   horsAmd : RDV affectés à un AMD non prévu, retirés de l'optimisation ; listés à part (horsAmd), hors nRdv et non planifiés.
    et des fonctions d'accès fournies par app.js :
      typesOf(rd) -> codes de type de visite du RDV
      motifNonAffecte(rd) -> motif d'un RDV que VROOM n'a pas pu placer
@@ -43,6 +44,13 @@
     non.forEach((x) => { if (!parMotif.has(x.motif)) parMotif.set(x.motif, []); parMotif.get(x.motif).push(x); });
 
     const planifies = amd.reduce((s, a) => s + a.n, 0);
+    // RDV sur des AMD non prévus : regroupés par AMD Isadom
+    const parAmd = new Map();
+    (R.horsAmd || []).forEach((rd) => {
+      const k = String(rd.amdActuel || '').trim();
+      if (!parAmd.has(k)) parAmd.set(k, { amd: k, motif: rd.motifAmd || '', liste: [] });
+      parAmd.get(k).liste.push(rd);
+    });
     return {
       date: R.date,
       nRdv: aPlanifier.length,
@@ -57,6 +65,11 @@
         total: non.length,
         parMotif: [...parMotif].map(([motif, liste]) => ({ motif, n: liste.length, liste }))
           .sort((a, b) => b.n - a.n || a.motif.localeCompare(b.motif, 'fr'))
+      },
+      horsAmd: {
+        total: (R.horsAmd || []).length,
+        parAmd: [...parAmd.values()].map((g) => Object.assign(g, { n: g.liste.length }))
+          .sort((a, b) => b.n - a.n || a.amd.localeCompare(b.amd, 'fr'))
       }
     };
   }
