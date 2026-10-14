@@ -98,11 +98,11 @@ const DEFAULT_PARAMS = {
   depots: [
     { id: 'aub', nom: 'Siège · Aubagne (13)', adr: "Parc d'activités de Napollon, 100 avenue des Templiers, 13676 Aubagne", actif: true, isadom: 'ARARD 13' },
     { id: 'sis', nom: 'Antenne · Sisteron (04/05)', adr: 'Parc d’activités de Sisteron Val de Durance, 14 allée des Romarins, 04200 Sisteron', actif: true, isadom: 'ARARD 04/05' },
-    { id: 'stj', nom: 'Antenne · Saint-Jeannet (06)', adr: 'ZAC de Saint-Estève, route de la Baronne, 06640 Saint-Jeannet', actif: false, isadom: 'ARARD 06' },
-    { id: 'cue', nom: 'Antenne · Cuers (83)', adr: 'ZAC des Bousquets, 593 avenue des Bousquets, 83390 Cuers', actif: false, isadom: 'ARARD 83' },
-    { id: 'cau', nom: 'Antenne · Caumont-sur-Durance (84)', adr: 'ZAC des Balarucs, 15 rue Toussaint Fléchaire, 84510 Caumont-sur-Durance', actif: false, isadom: 'ARARD 84' },
-    { id: 'bas', nom: 'Antenne · Bastia (20)', adr: 'Zone industrielle Furiani, immeuble Agostini, 20200 Bastia', actif: false, isadom: 'ARARD 2B' },
-    { id: 'aja', nom: 'Antenne · Ajaccio (20)', adr: '13 avenue Maréchal Juin, résidence Les Fleurs, 20090 Ajaccio', actif: false, isadom: 'ARARD 2A' }
+    { id: 'stj', nom: 'Antenne · Saint-Jeannet (06)', adr: 'ZAC de Saint-Estève, route de la Baronne, 06640 Saint-Jeannet', actif: true, isadom: 'ARARD 06' },
+    { id: 'cue', nom: 'Antenne · Cuers (83)', adr: 'ZAC des Bousquets, 593 avenue des Bousquets, 83390 Cuers', actif: true, isadom: 'ARARD 83' },
+    { id: 'cau', nom: 'Antenne · Caumont-sur-Durance (84)', adr: 'ZAC des Balarucs, 15 rue Toussaint Fléchaire, 84510 Caumont-sur-Durance', actif: true, isadom: 'ARARD 84' },
+    { id: 'bas', nom: 'Antenne · Bastia (20)', adr: 'Zone industrielle Furiani, immeuble Agostini, 20200 Bastia', actif: true, isadom: 'ARARD 2B' },
+    { id: 'aja', nom: 'Antenne · Ajaccio (20)', adr: '13 avenue Maréchal Juin, résidence Les Fleurs, 20090 Ajaccio', actif: true, isadom: 'ARARD 2A' }
   ]
 };
 /* types de visite Isadom (OrdRendezVousTypeVisite.sFKTypeVisite) : durées estimées par le métier (12/10/2026).
@@ -171,6 +171,8 @@ function migrateParams(p) {
   p.depots.forEach((d) => {
     if (d.isadom == null) { const def = DEFAULT_PARAMS.depots.find((x) => x.id === d.id); d.isadom = def ? def.isadom : ''; }
   });
+  // 14/10/2026 : toutes les antennes entrent dans le test (une seule fois : on peut ensuite en décocher)
+  if (!p.toutesAntennes) { p.depots.forEach((d) => { d.actif = true; }); p.toutesAntennes = true; }
 }
 let saveTimer;
 function save(flag) {
