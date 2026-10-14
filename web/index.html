@@ -16,9 +16,10 @@
   <div class="wrap top-in">
     <div class="brand"><strong>Opriservices</strong><span>Banc de test des tournées · Arard Services</span></div>
     <nav class="tabs" aria-label="Étapes">
-      <a href="#parametres" data-tab="parametres">1 · Paramètres</a>
-      <a href="#planification" data-tab="planification">2 · Planification</a>
-      <a href="#resultat" data-tab="resultat">3 · Résultat</a>
+      <a href="#parametres" data-tab="parametres">1 · Paramètres AMD</a>
+      <a href="#parametres-rdv" data-tab="parametres-rdv">2 · Paramètres RDV</a>
+      <a href="#planification" data-tab="planification">3 · Planification</a>
+      <a href="#resultat" data-tab="resultat">4 · Résultat</a>
     </nav>
     <button class="aide-btn" id="btn-aide" type="button" aria-haspopup="dialog">Aide<span class="aide-n" id="btn-aide-n" hidden></span></button>
   </div>
@@ -26,20 +27,62 @@
 
 <main class="wrap">
 
-<!-- ============ 1. PARAMÈTRES ============ -->
+<!-- ============ 1. PARAMÈTRES AMD ============ -->
 <section id="v-parametres" class="view" hidden>
   <div class="head">
     <div>
-      <h1>Paramètres métier</h1>
-      <p class="sub">Valeurs utilisées par l'optimiseur pour toutes les simulations. Enregistrement automatique dans ce navigateur.</p>
+      <h1>Paramètres AMD</h1>
+      <p class="sub">Journée type des AMD et points de départ. Enregistrement automatique dans ce navigateur.</p>
     </div>
     <div class="actions">
       <a class="btn2" href="#trajet">Test : trajet entre deux villes</a>
       <button class="btn2" id="cfg-export" type="button">Exporter la configuration</button>
       <label class="btn2" for="cfg-import">Importer une configuration</label>
       <input type="file" id="cfg-import" accept=".json" hidden>
-      <span class="saved" id="saved-flag" hidden>Enregistré</span>
+      <span class="saved" hidden>Enregistré</span>
     </div>
+  </div>
+
+  <div class="grid2">
+    <section class="card">
+      <h2>Journée type d'un AMD</h2>
+      <div class="grid2 tight">
+        <div><label for="p-amp-deb">Début de journée</label><input id="p-amp-deb" type="time" data-param="ampDeb"></div>
+        <div><label for="p-amp-fin">Fin de journée</label><input id="p-amp-fin" type="time" data-param="ampFin"></div>
+        <div><label for="p-hmax">Heures max de conduite</label><input id="p-hmax" type="number" min="0" step="0.5" data-param="hmax"></div>
+        <div><label for="p-kmmax">Kilomètres max / jour</label><input id="p-kmmax" type="number" min="0" step="10" data-param="kmmax"></div>
+        <div><label for="p-coef">Majoration trafic (%)</label><input id="p-coef" type="number" min="0" max="100" step="5" data-param="coef"></div>
+      </div>
+      <p class="hint">Les heures et km max sont repris pour chaque nouvel AMD et restent modifiables à l'écran Planification. La majoration allonge tous les temps de trajet calculés.</p>
+    </section>
+
+    <section class="card">
+      <h2>Pause déjeuner</h2>
+      <div class="grid2 tight">
+        <div><label for="p-pause-deb">Début au plus tôt</label><input id="p-pause-deb" type="time" data-param="pauseDeb"></div>
+        <div><label for="p-pause-fin">Fin au plus tard</label><input id="p-pause-fin" type="time" data-param="pauseFin"></div>
+        <div><label for="p-pause-duree">Durée de la pause (min)</label><input id="p-pause-duree" type="number" min="0" step="5" data-param="pauseDuree"></div>
+      </div>
+    </section>
+  </div>
+
+  <section class="card">
+    <div class="row-between">
+      <h2>Points de départ · siège et antennes</h2>
+      <button class="btn2" id="depot-geo" type="button">Localiser les adresses</button>
+    </div>
+    <div class="depots" id="l-depots"></div>
+  </section>
+</section>
+
+<!-- ============ 2. PARAMÈTRES RDV ============ -->
+<section id="v-parametres-rdv" class="view" hidden>
+  <div class="head">
+    <div>
+      <h1>Paramètres RDV</h1>
+      <p class="sub">Créneaux et durées des visites. Enregistrement automatique dans ce navigateur.</p>
+    </div>
+    <div class="actions"><span class="saved" hidden>Enregistré</span></div>
   </div>
 
   <div class="grid2">
@@ -49,25 +92,15 @@
         <thead><tr><th>Créneau</th><th>Début</th><th>Fin</th></tr></thead>
         <tbody id="t-creneaux"></tbody>
       </table>
-      <div class="grid2 tight">
-        <div><label for="p-pause-deb">Pause déjeuner : début au plus tôt</label><input id="p-pause-deb" type="time" data-param="pauseDeb"></div>
-        <div><label for="p-pause-fin">Pause déjeuner : fin au plus tard</label><input id="p-pause-fin" type="time" data-param="pauseFin"></div>
-        <div><label for="p-pause-duree">Durée de la pause (min)</label><input id="p-pause-duree" type="number" min="0" step="5" data-param="pauseDuree"></div>
-        <div><label for="p-stat">Temps de stationnement (min)</label><input id="p-stat" type="number" min="0" step="1" data-param="stationnement"></div>
-        <div><label for="p-multi">RDV à plusieurs types : % de la somme des durées</label><input id="p-multi" type="number" min="10" max="100" step="5" data-param="multiCoef"></div>
-      </div>
     </section>
 
     <section class="card">
-      <h2>Limites par AMD (valeurs par défaut)</h2>
+      <h2>Temps sur place</h2>
       <div class="grid2 tight">
-        <div><label for="p-amp-deb">Début de journée</label><input id="p-amp-deb" type="time" data-param="ampDeb"></div>
-        <div><label for="p-amp-fin">Fin de journée</label><input id="p-amp-fin" type="time" data-param="ampFin"></div>
-        <div><label for="p-hmax">Heures max de conduite</label><input id="p-hmax" type="number" min="0" step="0.5" data-param="hmax"></div>
-        <div><label for="p-kmmax">Kilomètres max / jour</label><input id="p-kmmax" type="number" min="0" step="10" data-param="kmmax"></div>
-        <div><label for="p-coef">Majoration trafic (%)</label><input id="p-coef" type="number" min="0" max="100" step="5" data-param="coef"></div>
+        <div><label for="p-stat">Temps de stationnement (min)</label><input id="p-stat" type="number" min="0" step="1" data-param="stationnement"></div>
+        <div><label for="p-multi">RDV à plusieurs types : % de la somme des durées</label><input id="p-multi" type="number" min="10" max="100" step="5" data-param="multiCoef"></div>
       </div>
-      <p class="hint">Les heures et km max sont repris pour chaque nouvel AMD et restent modifiables à l'écran 2. La majoration allonge tous les temps de trajet calculés.</p>
+      <p class="hint">Le stationnement s'ajoute à chaque visite. Un code de type inconnu compte 20 min.</p>
     </section>
   </div>
 
@@ -83,21 +116,13 @@
       </table>
     </div>
   </section>
-
-  <section class="card">
-    <div class="row-between">
-      <h2>Points de départ · siège et antennes</h2>
-      <button class="btn2" id="depot-geo" type="button">Localiser les adresses</button>
-    </div>
-    <div class="depots" id="l-depots"></div>
-  </section>
 </section>
 
 <!-- ============ TEST TRAJET ============ -->
 <section id="v-trajet" class="view" hidden>
   <div class="head">
     <div>
-      <a href="#parametres">← Retour aux paramètres</a>
+      <a href="#parametres">← Retour aux paramètres AMD</a>
       <h1>Test : trajet entre deux villes</h1>
       <p class="sub">Vérifier que les distances et temps calculés correspondent à ce que les AMD constatent sur le terrain.</p>
     </div>
@@ -131,7 +156,7 @@
   </div>
 </section>
 
-<!-- ============ 2. PLANIFICATION ============ -->
+<!-- ============ 3. PLANIFICATION ============ -->
 <section id="v-planification" class="view" hidden>
   <div class="head">
     <div>
@@ -226,7 +251,7 @@ AMD02;MARTIN Julie;ARARD 04/05;matin;5;250</pre>
   </section>
 </section>
 
-<!-- ============ 3. RÉSULTAT ============ -->
+<!-- ============ 4. RÉSULTAT ============ -->
 <section id="v-resultat" class="view" hidden>
   <div class="head">
     <div>

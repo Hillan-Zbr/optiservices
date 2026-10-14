@@ -170,7 +170,7 @@ details.infos div{white-space:pre-wrap}
 }
 @media print{
   body{background:#fff;font-size:12pt}
-  .top,.noprint,.tabs,#v-parametres,#v-planification,#v-trajet,#r-compare,#r-unassigned{display:none!important}
+  .top,.noprint,.tabs,#v-parametres,#v-parametres-rdv,#v-planification,#v-trajet,#r-compare,#r-unassigned{display:none!important}
   main{padding:0}
   .split,.col-wide{display:block}
   .route{margin-bottom:16pt;page-break-after:always;border:1px solid #999}

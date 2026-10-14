@@ -170,8 +170,8 @@ function save(flag) {
     }
   }
   if (flag) {
-    const f = $('#saved-flag'); f.hidden = false; clearTimeout(saveTimer);
-    saveTimer = setTimeout(() => { f.hidden = true; }, 1500);
+    const fs = $$('.saved'); fs.forEach((f) => { f.textContent = 'Enregistré'; f.hidden = false; }); clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => { fs.forEach((f) => { f.hidden = true; }); }, 1500);
   }
 }
 const typeOf = (code) => state.params.types.find((t) => t.code === code);
@@ -182,7 +182,7 @@ const depotOfAntenne = (antenne) => state.params.depots.find((d) => d.isadom && 
 const rdvInScope = (rd) => { if (!rd.antenne) return true; const d = depotOfAntenne(rd.antenne); return !!(d && d.actif); };
 
 /* ---------- navigation ---------- */
-const VIEWS = ['parametres', 'trajet', 'planification', 'resultat'];
+const VIEWS = ['parametres', 'parametres-rdv', 'trajet', 'planification', 'resultat'];
 function route() {
   let v = location.hash.replace('#', '') || 'parametres';
   if (!VIEWS.includes(v)) v = 'parametres';
@@ -190,7 +190,7 @@ function route() {
   document.body.dataset.view = v;
   const tab = v === 'trajet' ? 'parametres' : v;
   $$('.tabs a').forEach((a) => a.classList.toggle('on', a.dataset.tab === tab));
-  if (v === 'parametres') renderParams();
+  if (v === 'parametres' || v === 'parametres-rdv') renderParams();
   if (v === 'planification') renderPlan();
   if (v === 'resultat') renderResult();
   if (v === 'trajet') initTrajet();
@@ -244,7 +244,7 @@ function geoBadge(g) {
   return `<span class="geo ${cls}" title="${esc(g.label)} · score ${g.score.toFixed(2)}">${cls === 'ok' ? 'Localisé' : 'À vérifier'}</span>`;
 }
 
-/* lignes du tableau des RDV écartés (écran 2 : prévision ; écran 3 : résultat) */
+/* lignes du tableau des RDV écartés (écran Planification : prévision ; écran Résultat : résultat) */
 function ecartesRows(list) {
   return list.map((rd) => `<tr><td class="mono gras">${esc(frDate(rd.date))}</td><td class="mono gras">${esc(rd.patientCode || '')}</td><td class="mono gras">${esc(rd.idRdv || '')}</td><td><b>${esc(rd.patient)}</b>${rd.antenne ? `<div class="hint">${esc(rd.antenne)}</div>` : ''}</td>
     <td class="mono">${esc(rd.cp)}</td><td>${esc(rd.ville || '?')}</td><td>${esc(rd.adresse)}</td><td>${esc(rdvTypeNom(rd))}</td>
@@ -274,7 +274,9 @@ function renderParams() {
     <div>${geoBadge(d.geo)} ${d.geo && !d.geo.none ? '<span class="hint">' + esc(d.geo.label) + '</span>' : ''}</div></div>`).join('');
 }
 function bindParams() {
-  const v = $('#v-parametres');
+  // les deux écrans de paramètres (AMD et RDV) partagent les mêmes écouteurs
+  const vues = [$('#v-parametres'), $('#v-parametres-rdv')];
+  const v = { addEventListener: (type, fn) => vues.forEach((el) => el.addEventListener(type, fn)) };
   v.addEventListener('change', (e) => {
     const el = e.target; const p = state.params;
     const logChg = (quoi, avant, apres) => { if (String(avant) !== String(apres)) J.info('parametres', 'Paramètre modifié', quoi, { avant, apres }); };
@@ -312,7 +314,7 @@ function bindParams() {
       await pool(state.params.depots, geocodeDepot);
       const ko = state.params.depots.filter((d) => d.geo && d.geo.none);
       J.log(ko.length ? 'warn' : 'info', 'parametres', 'Localisation des antennes', ko.length ? `${ko.length} adresse${ko.length > 1 ? 's' : ''} introuvable${ko.length > 1 ? 's' : ''}` : `${state.params.depots.length} adresses localisées`, ko.map((d) => d.nom + ' : ' + d.adr));
-    } catch (err) { console.error(err); J.crit('parametres', 'Localisation des antennes', err.message); const f = $('#saved-flag'); f.textContent = err.message; f.hidden = false; }
+    } catch (err) { console.error(err); J.crit('parametres', 'Localisation des antennes', err.message); $$('.saved').forEach((f) => { f.textContent = err.message; f.hidden = false; }); }
     e.target.disabled = false; save(true); renderParams();
   });
   $('#cfg-export').addEventListener('click', () => {
@@ -1060,7 +1062,7 @@ function renderResult() {
   if (!R) {
     const n = state.rdv.filter((r) => r.date === state.date).length;
     $('#r-titre').textContent = 'Tournées · ' + longDate(state.date);
-    $('#r-sub').textContent = n ? `Journée non optimisée · ${n} RDV prévu${n > 1 ? 's' : ''}.` : 'Aucun RDV ce jour. Préparez la journée à l’écran 2.';
+    $('#r-sub').textContent = n ? `Journée non optimisée · ${n} RDV prévu${n > 1 ? 's' : ''}.` : 'Aucun RDV ce jour. Préparez la journée à l’écran Planification.';
     $('#r-opt').hidden = !n;
     $('#r-ecartes').hidden = true;
     clearResult();

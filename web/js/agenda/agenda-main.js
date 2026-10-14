@@ -204,7 +204,7 @@ function init() {
   app.bus.addEventListener('pick', (e) => S.select(e.detail.job));
   app.bus.addEventListener('hover', (e) => S.hover(e.detail.job));
   app.bus.addEventListener('render', () => {
-    // nouveau jour : on repart sans sélection ; même jour (retour sur l'écran 3) : on la réapplique à la carte
+    // nouveau jour : on repart sans sélection ; même jour (retour sur l'écran Résultat) : on la réapplique à la carte
     if (S.state.jour !== app.date()) { S.state.jour = app.date(); S.select(null); }
     else if (S.state.selectedJobId != null) app.selectJob(Number(S.state.selectedJobId));
     render();
