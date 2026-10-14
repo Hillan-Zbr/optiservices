@@ -352,10 +352,12 @@ function renderPlan() {
   $('#pl-date').value = frDate(state.date);
   const deps = state.params.depots;
   $('#c-amd').textContent = '· ' + state.amd.filter((a) => amdActif(a) && a.dispo !== 'absent').length;
-  $('#t-amd').innerHTML = state.amd.map((a, i) => {
+  const amdOrder = ddTrier('amd', state.amd.map((a, i) => i).filter((i) => amdMatches(state.amd[i])));
+  $('#t-amd').innerHTML = amdOrder.map((i) => {
+    const a = state.amd[i];
     const d = depotOf(a.depot); const off = !amdActif(a) || a.dispo === 'absent' || !d || !d.actif;
     return `<tr class="${off ? 'off' : ''}">
-    <td><input type="checkbox" data-amd="${i}" data-k="actif" ${amdActif(a) ? 'checked' : ''} aria-label="AMD actif"></td>
+    <td class="cb"><label><input type="checkbox" data-amd="${i}" data-k="actif" ${amdActif(a) ? 'checked' : ''} aria-label="AMD actif (décocher pour l'exclure de l'optimisation)"></label></td>
     <td style="width:90px"><input class="mono" data-amd="${i}" data-k="code" value="${esc(a.code || '')}" placeholder="—" aria-label="Code Isadom de l'AMD"></td>
     <td><input data-amd="${i}" data-k="nom" value="${esc(a.nom)}" aria-label="Nom de l'AMD"></td>
     <td><select data-amd="${i}" data-k="depot" aria-label="Point de départ">${deps.map((x) => `<option value="${x.id}" ${x.id === a.depot ? 'selected' : ''}>${esc(x.nom)}${x.actif ? '' : ' (hors test)'}</option>`).join('')}</select></td>
@@ -364,6 +366,7 @@ function renderPlan() {
     <td style="width:100px"><input type="number" min="0" step="10" class="mono" data-amd="${i}" data-k="kmmax" value="${a.kmmax}" aria-label="Km max"></td>
     <td><button class="icon-btn" data-amd-del="${i}" type="button" aria-label="Retirer cet AMD">×</button></td></tr>`;
   }).join('');
+  if (state.amd.length && !amdOrder.length) $('#t-amd').innerHTML = '<tr><td colspan="8" class="empty">Aucun AMD ne correspond au filtre.</td></tr>';
 
   const types = state.params.types;
   const dayAll = state.rdv.filter((r) => r.date === state.date);
@@ -376,7 +379,7 @@ function renderPlan() {
   $('#t-pl-ecartes').innerHTML = ecartesRows(probs);
   $('#c-rdv').textContent = `· ${state.rdv.length} au total · ${nDay} le ${frDate(state.date)}` + (nScope < nDay ? ` dont ${nScope} sur les antennes du test` : '');
   // les RDV Isadom de la date sont affichés en tête ; ceux hors date ou hors antennes du test sont grisés
-  const order = state.rdv.map((r, i) => i).filter((i) => rdvMatches(state.rdv[i])).sort((a, b) => (state.rdv[a].date === state.date ? 0 : 1) - (state.rdv[b].date === state.date ? 0 : 1) || a - b);
+  const order = ddTrier('rdv', state.rdv.map((r, i) => i).filter((i) => rdvMatches(state.rdv[i])).sort((a, b) => (state.rdv[a].date === state.date ? 0 : 1) - (state.rdv[b].date === state.date ? 0 : 1) || a - b));
   $('#t-rdv').innerHTML = state.rdv.length ? order.map((i) => { const r = state.rdv[i]; const isa = !!r.idRdv; return `<tr class="${r.date === state.date && rdvInScope(r) ? '' : 'off'}">
     <td style="width:150px"><input class="mono gras" ${DATE_ATTRS} data-rdv="${i}" data-k="date" value="${frDate(r.date)}" aria-label="Date"></td>
     <td style="width:110px"><input class="mono gras" data-rdv="${i}" data-k="patientCode" value="${esc(r.patientCode || '')}" placeholder="—" aria-label="Code patient"></td>
@@ -396,7 +399,11 @@ function renderPlan() {
     <td><button class="icon-btn" data-rdv-del="${i}" type="button" aria-label="Supprimer ce RDV">×</button></td></tr>`; }).join('')
     : '<tr><td colspan="12" class="empty">Aucun RDV. Importez un fichier CSV, ajoutez un RDV ou chargez l\'exemple.</td></tr>';
   if (state.rdv.length && !order.length) $('#t-rdv').innerHTML = '<tr><td colspan="12" class="empty">Aucun RDV ne correspond à la recherche.</td></tr>';
-  $$('.dd-btn').forEach((b) => { const on = !!rdvSel[b.dataset.dd]; b.classList.toggle('on', on); b.title = on ? 'Filtre actif : modifier' : 'Filtrer par valeur'; });
+  $$('.dd-btn').forEach((b) => {
+    const D = DD[b.dataset.ddT || 'rdv']; const on = !!D.sel[b.dataset.dd]; const tri = D.tri && D.tri.k === b.dataset.dd ? D.tri.dir : 0;
+    b.classList.toggle('on', on); b.textContent = tri > 0 ? '↑' : tri < 0 ? '↓' : '▾';
+    b.title = [on ? 'Filtre actif' : '', tri ? (tri > 0 ? 'tri croissant' : 'tri décroissant') : ''].filter(Boolean).join(', ') || 'Filtrer ou trier';
+  });
   const filtering = Object.values(rdvFilter).some((v) => v && v.trim()) || Object.keys(rdvSel).length > 0;
   if (filtering) $('#c-rdv').textContent += ` · ${order.length} trouvé${order.length > 1 ? 's' : ''}`;
 
@@ -440,21 +447,50 @@ const DD_VAL = {
   amd: (r) => r.amdActuel || '',
   geo: (r) => geoVal(r.geo)
 };
+/* mêmes listes déroulantes sur le tableau des AMD */
+const amdSel = {};
+const AMD_VAL = {
+  actif: (a) => (amdActif(a) ? 'Oui' : 'Non'),
+  code: (a) => String(a.code || '').trim(),
+  nom: (a) => a.nom || '',
+  depot: (a) => (depotOf(a.depot) || { nom: a.depot || '' }).nom,
+  dispo: (a) => (DISPOS.find((x) => x.code === a.dispo) || { nom: a.dispo || '' }).nom,
+  hmax: (a) => String(a.hmax ?? ''),
+  kmmax: (a) => String(a.kmmax ?? '')
+};
+const amdMatches = (a, sauf) => Object.entries(amdSel).every(([k, sel]) => k === sauf || sel.has(AMD_VAL[k](a)));
+// tri : null = ordre par défaut, sinon { k: colonne, dir: 1 croissant | -1 décroissant }
+const DD = {
+  rdv: { list: () => state.rdv, sel: rdvSel, val: DD_VAL, matches: rdvMatches, tri: null },
+  amd: { list: () => state.amd, sel: amdSel, val: AMD_VAL, matches: amdMatches, tri: null }
+};
+const ddCmp = (a, b) => a.localeCompare(b, 'fr', { numeric: true, sensitivity: 'base' });
+/* trie des index de lignes selon le tri choisi ; les vides restent en dernier, l'ordre par défaut départage */
+function ddTrier(t, idx) {
+  const D = DD[t]; if (!D.tri) return idx;
+  const f = D.val[D.tri.k]; const L = D.list();
+  return idx.slice().sort((i, j) => {
+    const a = f(L[i]), b = f(L[j]);
+    return a === b ? 0 : a === '' ? 1 : b === '' ? -1 : ddCmp(a, b) * D.tri.dir;
+  });
+}
 const ddLabel = (k, v) => (v === '' ? '(Vides)' : k === 'date' ? frDate(v) : v);
 let ddCol = null;
 function ddClose() { const p = $('#dd-pop'); if (p) p.remove(); ddCol = null; }
 function ddOpen(btn) {
-  const k = btn.dataset.dd;
-  if (ddCol === k) { ddClose(); return; }
-  ddClose(); ddCol = k;
-  // valeurs des RDV qui passent les filtres des autres colonnes ; les vides en dernier
-  const vals = [...new Set(state.rdv.filter((r) => rdvMatches(r, k)).map(DD_VAL[k]))]
-    .sort((a, b) => (a === '' ? 1 : b === '' ? -1 : a.localeCompare(b, 'fr', { numeric: true, sensitivity: 'base' })));
-  const sel = rdvSel[k];
+  const k = btn.dataset.dd; const t = btn.dataset.ddT || 'rdv'; const D = DD[t];
+  if (ddCol === t + ':' + k) { ddClose(); return; }
+  ddClose(); ddCol = t + ':' + k;
+  // valeurs des lignes qui passent les filtres des autres colonnes ; les vides en dernier
+  const vals = [...new Set(D.list().filter((r) => D.matches(r, k)).map(D.val[k]))]
+    .sort((a, b) => (a === '' ? 1 : b === '' ? -1 : ddCmp(a, b)));
+  const sel = D.sel[k];
+  const tri = D.tri && D.tri.k === k ? D.tri.dir : 0;
   const pop = document.createElement('div');
   pop.id = 'dd-pop'; pop.className = 'dd-pop';
-  pop.setAttribute('role', 'dialog'); pop.setAttribute('aria-label', 'Filtrer par valeur');
-  pop.innerHTML = `<input type="search" class="dd-q" placeholder="Rechercher…" aria-label="Rechercher une valeur">
+  pop.setAttribute('role', 'dialog'); pop.setAttribute('aria-label', 'Filtrer ou trier');
+  pop.innerHTML = `<div class="dd-sort"><button class="btn2 ${tri > 0 ? 'on' : ''}" type="button" data-dd-sort="1">↑ Tri croissant</button><button class="btn2 ${tri < 0 ? 'on' : ''}" type="button" data-dd-sort="-1">↓ Tri décroissant</button>${tri ? '<button class="btn2" type="button" data-dd-sort="0">Sans tri</button>' : ''}</div>
+    <input type="search" class="dd-q" placeholder="Rechercher…" aria-label="Rechercher une valeur">
     <div class="dd-list"><label class="dd-all"><input type="checkbox" data-dd-all> (Tout sélectionner)</label>
     ${vals.map((v) => `<label data-txt="${esc(norm(ddLabel(k, v)))}"><input type="checkbox" data-dd-v="${esc(v)}" ${!sel || sel.has(v) ? 'checked' : ''}> ${esc(ddLabel(k, v))}</label>`).join('') || '<p class="hint">Aucune valeur.</p>'}</div>
     <div class="dd-foot"><button class="btn2" type="button" data-dd-clear ${sel ? '' : 'disabled'}>Effacer le filtre</button><span></span><button class="btn2" type="button" data-dd-no>Annuler</button><button class="btn" type="button" data-dd-ok>OK</button></div>`;
@@ -487,10 +523,11 @@ function ddOpen(btn) {
   pop.addEventListener('click', (e) => {
     const t = e.target;
     if (t.matches('[data-dd-no]')) { ddClose(); btn.focus(); return; }
-    if (t.matches('[data-dd-clear]')) { delete rdvSel[k]; ddClose(); renderPlan(); btn.focus(); return; }
+    if (t.matches('[data-dd-sort]')) { const dir = Number(t.dataset.ddSort); D.tri = dir ? { k, dir } : null; ddClose(); renderPlan(); btn.focus(); return; }
+    if (t.matches('[data-dd-clear]')) { delete D.sel[k]; ddClose(); renderPlan(); btn.focus(); return; }
     if (t.matches('[data-dd-ok]')) {
       const coches = boxes().filter((x) => x.checked).map((x) => x.dataset.ddV);
-      if (coches.length === vals.length) delete rdvSel[k]; else rdvSel[k] = new Set(coches);
+      if (coches.length === vals.length) delete D.sel[k]; else D.sel[k] = new Set(coches);
       ddClose(); renderPlan(); btn.focus();
     }
   });

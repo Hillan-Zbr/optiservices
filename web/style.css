@@ -44,6 +44,10 @@ input,select{width:100%;height:38px;border:1px solid #c9d2de;border-radius:6px;p
 input[type=checkbox]{width:18px;height:18px;vertical-align:middle}
 input:focus,select:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:var(--accent)}
 td input,td select{min-width:70px}
+td input[type=checkbox]{min-width:0;cursor:pointer}
+/* case « Actif » : toute la cellule est cliquable */
+.tbl td.cb{width:56px;padding:0}
+.tbl td.cb label{margin:0;display:flex;align-items:center;justify-content:center;min-height:38px;cursor:pointer}
 
 .btn,.btn2{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:40px;padding:0 16px;border-radius:6px;font:600 14px var(--f);cursor:pointer;text-decoration:none;white-space:nowrap;margin:0}
 .btn{border:0;background:var(--accent);color:#fff;height:44px;padding:0 22px;font-size:15px}
@@ -200,6 +204,9 @@ details.infos div{white-space:pre-wrap}
 .dd-list label:hover{background:var(--accent-soft)}
 .dd-list .dd-all{font-weight:600;border-bottom:1px solid var(--line2);margin-bottom:2px}
 .dd-list .hint{padding:4px 10px}
+.dd-sort{display:flex;gap:6px;flex-wrap:wrap}
+.dd-sort .btn2{padding:5px 10px;font-size:13px}
+.dd-sort .btn2.on{background:var(--accent-soft);border-color:var(--accent)}
 .dd-foot{display:flex;gap:6px;align-items:center}
 .dd-foot span{flex:1}
 .dd-foot .btn,.dd-foot .btn2{padding:5px 10px;font-size:13px}
