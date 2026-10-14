@@ -92,16 +92,18 @@ function titreRdv(rd) {
   return [app.patientLib(rd), rd.ville || '?', ji.intervention, ji.creneau.label].join(' · ');
 }
 
+// informations Isadom affichées dans le détail : « Visite | Prestation » et Info RDV
+const extraRdv = (rd) => (rd ? { visitePrest: app.rdvVisitePrest(rd), infoRdv: rd.infoRdv || '' } : {});
 function detailFor(jobId) {
   if (!current || jobId == null) return null;
   for (const c of current.opt.colonnes) {
     const s = c.segments.find((x) => x.kind === 'rdv' && x.jobId === jobId);
-    if (s) return Object.assign({}, s, { amd: c.name, surCarte: true });
+    if (s) return Object.assign({}, s, { amd: c.name, surCarte: true }, extraRdv(current.R.rdv[Number(jobId) - 1]));
   }
   const u = current.nonAffectes.find((x) => x.jobId === jobId);
   if (u) {
     const ji = jobInfo(u.rd, app.params);
-    return { jobId, nonAffecte: true, patient: app.patientLib(u.rd), ville: u.rd.ville, intervention: ji.intervention, creneau: ji.creneau.label, motif: u.motif, surCarte: !!(u.rd.geo && !u.rd.geo.none) };
+    return { jobId, nonAffecte: true, patient: app.patientLib(u.rd), ville: u.rd.ville, intervention: ji.intervention, creneau: ji.creneau.label, motif: u.motif, surCarte: !!(u.rd.geo && !u.rd.geo.none), ...extraRdv(u.rd) };
   }
   return null;
 }

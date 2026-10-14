@@ -52,6 +52,8 @@ const rdvO2 = (rd) => rdvTypes(rd).some((c) => { const t = typeOf(c); return t &
 const typeLabel = (c) => { const t = typeOf(c); return t && t.nom && t.nom !== c ? c + ' – ' + t.nom : c; };
 const rdvTypeNom = (rd) => rdvTypes(rd).map(typeLabel).join(' + ');
 // libellé patient des tournées, de la carte, de l'agenda et des exports : NOM Prénom (code patient Isadom)
+/* « Visite | Prestation » : TypeVisite et TypePrestation bruts de l'export Isadom, séparés par « | » */
+const rdvVisitePrest = (rd) => (rd.typeVisite || rd.typePrestation ? (rd.typeVisite || '') + '|' + (rd.typePrestation || '') : '');
 const patientLib = (rd) => rd.patient + (rd.patientCode ? ' (' + rd.patientCode + ')' : '');
 /* informations d'accès Isadom (AnnAdresse) : affichées au RP à la demande, destinées ensuite à MJ2 */
 function rdvInfos(rd) {
@@ -385,14 +387,15 @@ function renderPlan() {
     <td>${r.types && r.types.length > 1
       ? `<span class="mono" title="${esc(rdvTypeNom(r))}">${esc(r.types.join(' + '))}</span><div class="hint">${rdvDuree(r)} min</div>`
       : `<select data-rdv="${i}" data-k="type" aria-label="Intervention">${types.map((t) => `<option value="${esc(t.code)}" ${t.code === r.type ? 'selected' : ''}>${esc(typeLabel(t.code))}</option>`).join('')}${typeOf(r.type) ? '' : `<option selected value="${esc(r.type)}">${esc(r.type)} (inconnu)</option>`}</select>`}</td>
+    <td class="mono">${esc(rdvVisitePrest(r))}</td>
     <td style="width:130px">${isa && r.hDeb
       ? `<span class="badge ${crenOf(r.cren).badge}">${crenOf(r.cren).nom}</span><div class="hint mono">${esc(r.hDeb)}–${esc(r.hFin)}</div>`
       : `<select data-rdv="${i}" data-k="cren" aria-label="Demi-journée">${CRENEAUX.map((c) => `<option value="${c.code}" ${c.code === r.cren ? 'selected' : ''}>${c.nom}</option>`).join('')}</select>`}</td>
     <td><input data-rdv="${i}" data-k="amdActuel" value="${esc(r.amdActuel)}" aria-label="AMD prévu">${r.amdCode ? `<div class="hint mono">code ${esc(r.amdCode)}</div>` : ''}</td>
     <td>${geoBadge(r.geo)}</td>
     <td><button class="icon-btn" data-rdv-del="${i}" type="button" aria-label="Supprimer ce RDV">×</button></td></tr>`; }).join('')
-    : '<tr><td colspan="11" class="empty">Aucun RDV. Importez un fichier CSV, ajoutez un RDV ou chargez l\'exemple.</td></tr>';
-  if (state.rdv.length && !order.length) $('#t-rdv').innerHTML = '<tr><td colspan="11" class="empty">Aucun RDV ne correspond à la recherche.</td></tr>';
+    : '<tr><td colspan="12" class="empty">Aucun RDV. Importez un fichier CSV, ajoutez un RDV ou chargez l\'exemple.</td></tr>';
+  if (state.rdv.length && !order.length) $('#t-rdv').innerHTML = '<tr><td colspan="12" class="empty">Aucun RDV ne correspond à la recherche.</td></tr>';
   $$('.dd-btn').forEach((b) => { const on = !!rdvSel[b.dataset.dd]; b.classList.toggle('on', on); b.title = on ? 'Filtre actif : modifier' : 'Filtrer par valeur'; });
   const filtering = Object.values(rdvFilter).some((v) => v && v.trim()) || Object.keys(rdvSel).length > 0;
   if (filtering) $('#c-rdv').textContent += ` · ${order.length} trouvé${order.length > 1 ? 's' : ''}`;
@@ -410,6 +413,7 @@ const FILTER_TEXT = {
   patient: (r) => [r.patient, r.idRdv, r.antenne, r.besoin].join(' '),
   cp: (r) => r.cp, ville: (r) => r.ville, adresse: (r) => r.adresse,
   type: (r) => rdvTypes(r).join(' ') + ' ' + rdvTypeNom(r),
+  prest: (r) => rdvVisitePrest(r),
   cren: (r) => [crenOf(r.cren).nom, r.hDeb, r.hFin].join(' '),
   amd: (r) => [r.amdActuel, r.amdCode].join(' '),
   geo: (r) => geoText(r.geo)
@@ -431,6 +435,7 @@ const DD_VAL = {
   patient: (r) => r.patient || '',
   cp: (r) => r.cp || '', ville: (r) => r.ville || '', adresse: (r) => r.adresse || '',
   type: (r) => rdvTypeNom(r),
+  prest: (r) => rdvVisitePrest(r),
   cren: (r) => crenOf(r.cren).nom,
   amd: (r) => r.amdActuel || '',
   geo: (r) => geoVal(r.geo)
@@ -780,7 +785,7 @@ function importIsadom(rows, head, name) {
       patient: [get('patientnom'), get('patientprenom')].filter(Boolean).join(' ') || 'Patient',
       patientCode: get('patientcode'), cp, ville,
       adresse: [get('numerovoie'), get('typevoie'), get('voie')].filter(Boolean).join(' ').replace(/\s+/g, ' '),
-      type: types[0], types, amdActuel: get('amdnom'), amdCode: get('amdcode'), antenne: get('antenne'), secteur: get('secteurlibelle'),
+      type: types[0], types, typeVisite: get('typevisite'), typePrestation: get('typeprestation'), infoRdv: get('infordv'), amdActuel: get('amdnom'), amdCode: get('amdcode'), antenne: get('antenne'), secteur: get('secteurlibelle'),
       acces: { tel1: get('telfixe'), tel2: get('telautre'), batiment: get('batiment'), etage: get('etage'), porte: get('porte'), interphone: get('interphone'), info: get('infoadresse') }
     };
     const g = isadomGeo(get); if (g) rd.geo = g; else if (get('lat') || get('w3wlat')) geoRejet.push(id);
@@ -1071,7 +1076,7 @@ function renderResult() {
       const wait = s.waiting_time > 60 ? ` · attente ${Math.round(s.waiting_time / 60)} min` : '';
       const inf = infoTitle(rd);
       return `<li class="pick" data-job="${s.job}" tabindex="0" title="Voir sur la carte"><span class="n" style="background:${col}">${n}</span><span class="t">${s2hm(s.arrival)}</span>
-        <span><b>${esc(patientLib(rd))}</b> <span class="w">· ${esc(rd.ville)} · ${esc(rdvTypeNom(rd))}${rd.adresse ? ' · ' + esc(rd.adresse) : ''}${wait}</span>${inf ? `<details class="infos"><summary>Infos d'accès</summary>${rdvInfos(rd).map(([k, v]) => `<div><span class="hint">${esc(k)}</span> ${esc(v)}</div>`).join('')}</details>` : ''}</span>
+        <span><b>${esc(patientLib(rd))}</b> <span class="w">· ${esc(rd.ville)} · ${esc(rdvTypeNom(rd))}${rd.adresse ? ' · ' + esc(rd.adresse) : ''}${wait}</span>${rdvVisitePrest(rd) ? `<div class="hint mono">Visite | Prestation : ${esc(rdvVisitePrest(rd))}</div>` : ''}${rd.infoRdv ? `<div class="hint">Info RDV : ${esc(rd.infoRdv)}</div>` : ''}${inf ? `<details class="infos"><summary>Infos d'accès</summary>${rdvInfos(rd).map(([k, v]) => `<div><span class="hint">${esc(k)}</span> ${esc(v)}</div>`).join('')}</details>` : ''}</span>
         <span class="badge ${c.badge}" title="${esc(rdvWindowLabel(rd))}">${rd.hDeb ? esc(rd.hDeb + '–' + rd.hFin) : c.nom}</span></li>`;
     }).join('');
     return `<section class="route"><div class="route-h"><div class="who"><span class="dot" style="background:${col}"></span><b>${esc(a.nom)}</b><span>${esc(d.nom)}</span></div>
@@ -1146,7 +1151,7 @@ function drawResultMap(R) {
       if (s.type === 'job') {
         n++; const rd = R.rdv[s.job - 1];
         markersR[s.job] = L.marker([s.location[1], s.location[0]], { icon: pinIcon(n, col) })
-          .bindTooltip(`<b>${esc(patientLib(rd))}</b> · ${esc(rd.ville)}<br>${esc(a.nom)} · n° ${n} · ${s2hm(s.arrival)}`)
+          .bindTooltip(`<b>${esc(patientLib(rd))}</b> · ${esc(rd.ville)}<br>${esc(a.nom)} · n° ${n} · ${s2hm(s.arrival)}${tipRdv(rd)}`)
           .on('click', () => pickJob(s.job, true)).addTo(layerR);
         jobVehR[s.job] = r.vehicle;
       }
@@ -1156,7 +1161,7 @@ function drawResultMap(R) {
   R.res.unassigned.forEach((u) => {
     const rd = R.rdv[u.id - 1]; if (!rd || !rd.geo || rd.geo.none) return;
     markersR[u.id] = L.marker([rd.geo.lat, rd.geo.lon], { icon: pinIcon('!', '#8a94a3') })
-      .bindTooltip(`<b>${esc(patientLib(rd))}</b> · ${esc(rd.ville)}<br>Non affecté`)
+      .bindTooltip(`<b>${esc(patientLib(rd))}</b> · ${esc(rd.ville)}<br>Non affecté${tipRdv(rd)}`)
       .on('click', () => pickJob(u.id, true)).addTo(layerR);
   });
   Object.entries(markersR).forEach(([job, m]) => m
@@ -1165,6 +1170,8 @@ function drawResultMap(R) {
   setTimeout(() => { mapR.invalidateSize(); if (layerR.getLayers().length) mapR.fitBounds(layerR.getBounds(), { padding: [24, 24] }); else mapR.setView([43.7, 6], 8); }, 50);
 }
 /* mise en évidence d'un RDV : ligne <-> repère sur la carte <-> agenda (via appBus) */
+/* lignes « Visite | Prestation » et « Info RDV » des infobulles de la carte */
+const tipRdv = (rd) => (rdvVisitePrest(rd) ? '<br>Visite | Prestation : ' + esc(rdvVisitePrest(rd)) : '') + (rd.infoRdv ? '<br>Info RDV : ' + esc(rd.infoRdv) : '');
 let markersR = {}, linesR = {}, jobVehR = {}, pickedJob = null, hoveredJob = null;
 const appBus = new EventTarget();
 const mapVisible = () => !!mapR && $('#map-result').offsetParent !== null;
@@ -1303,7 +1310,7 @@ window.OptiApp = {
   hasResult: (iso) => !!state.results[iso],
   setDate(iso) { if (iso && iso !== state.date) { state.date = iso; save(); alertMsg('#r-msg', ''); renderResult(); } },
   typeOf, depotOf, crenOf, hm2s, longDate, frDate,
-  rdvWindow: (rd) => rdvWindow(rd), rdvWindowLabel: (rd) => rdvWindowLabel(rd), rdvTypeNom, rdvO2, rdvInfos, patientLib,
+  rdvWindow: (rd) => rdvWindow(rd), rdvWindowLabel: (rd) => rdvWindowLabel(rd), rdvTypeNom, rdvO2, rdvInfos, patientLib, rdvVisitePrest,
   vehicleWindow: (a) => vehicleWindow(a, state.params),
   pickedJob: () => pickedJob,
   selectJob, hoverJob,

@@ -117,6 +117,8 @@ body[data-view=resultat][data-rvue=agenda] #r-compare{display:none!important}
 .ag-kv{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 16px;font-size:14px}
 .ag-k{font-size:12px;color:var(--ag-txt2)}
 .ag-v{font-weight:600;font-variant-numeric:tabular-nums}
+.ag-kv1{grid-template-columns:1fr}
+.ag-kv1 .ag-v{font-weight:400;white-space:pre-wrap;overflow-wrap:anywhere}
 .ag-warn{margin:0;padding:10px 12px;border-radius:6px;background:var(--ag-warn-fond);color:var(--ag-warn-txt);font-size:13px;font-weight:500}
 .ag-alert{margin:0;padding:10px 12px;border-radius:6px;background:#FDECEA;color:var(--ag-over-txt);font-size:13px;font-weight:500}
 .ag-voir{min-height:44px;border:1px solid var(--ag-lien);border-radius:8px;background:var(--ag-carte);color:var(--ag-lien);font:600 14px var(--ag-f);cursor:pointer}

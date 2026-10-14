@@ -211,7 +211,8 @@ function renderDetail(d) {
   if (d.nonAffecte) {
     fill(
       h('div', {}, h('div.ag-patient', {}, d.patient), h('div.ag-ville', {}, d.ville + ' · ' + d.intervention)),
-      h('div.ag-kv', {}, kv('Créneau demandé', d.creneau), kv('Statut', 'Non affecté')),
+      h('div.ag-kv', {}, kv('Créneau demandé', d.creneau), kv('Statut', 'Non affecté'), kv('Visite | Prestation', d.visitePrest || '—')),
+      d.infoRdv ? h('div.ag-kv.ag-kv1', {}, kv('Info RDV', d.infoRdv)) : null,
       h('p.ag-alert', {}, 'Motif probable : ' + d.motif),
       voir);
     return;
@@ -221,7 +222,9 @@ function renderDetail(d) {
     h('div.ag-kv', {},
       kv('Arrivée prévue', fmtHeure(d.arriveeMin)), kv('Fin d’intervention', fmtHeure(d.endMin)),
       kv('Créneau demandé', d.creneau || '—'), kv('Durée', fmtDuree(dureeMin(d))),
-      kv('Trajet précédent', d.trajetPrecedentMin ? fmtDuree(d.trajetPrecedentMin) : '—'), kv('AMD', d.amd)),
+      kv('Trajet précédent', d.trajetPrecedentMin ? fmtDuree(d.trajetPrecedentMin) : '—'), kv('AMD', d.amd),
+      kv('Visite | Prestation', d.visitePrest || '—')),
+    d.infoRdv ? h('div.ag-kv.ag-kv1', {}, kv('Info RDV', d.infoRdv)) : null,
     d.warn ? h('p.ag-warn', {}, 'Arrivée proche de la fin du créneau : peu de marge en cas d’aléa de circulation.') : null,
     voir);
 }
