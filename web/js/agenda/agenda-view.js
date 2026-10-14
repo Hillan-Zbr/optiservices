@@ -41,13 +41,11 @@ export function mountAgenda(root, h_) {
   handlers = h_;
   const jour = h('select', { id: 'ag-jour', onchange: (e) => handlers.onJour(e.target.value) });
   const antennes = h('div.ag-segbtns');
-  const modes = h('div.ag-segbtns');
   const summary = h('div.ag-summary', { 'aria-live': 'polite' });
   const toolbar = h('div.ag-toolbar.ag-card',
     {},
     h('div.ag-field', {}, h('label', { for: 'ag-jour', text: 'Jour' }), jour),
-    h('div.ag-field', { role: 'group', 'aria-label': 'Département' }, h('span.ag-flabel', { text: 'Département', 'aria-hidden': 'true' }), antennes),
-    h('div.ag-field', { role: 'group', 'aria-label': 'Affichage' }, h('span.ag-flabel', { text: 'Affichage', 'aria-hidden': 'true' }), modes),
+    h('div.ag-field', { role: 'group', 'aria-label': 'Antenne' }, h('span.ag-flabel', { text: 'Antenne', 'aria-hidden': 'true' }), antennes),
     summary
   );
 
@@ -70,7 +68,7 @@ export function mountAgenda(root, h_) {
   const body = h('div.ag-body', {}, main, side);
 
   root.replaceChildren(toolbar, body);
-  refs = { root, jour, antennes, modes, summary, msg, note, grid, scroll, main, detailBody, unCount, unList, unEmpty, placer, legend };
+  refs = { root, jour, antennes, summary, msg, note, grid, scroll, main, detailBody, unCount, unList, unEmpty, placer, legend };
 }
 
 function segBtns(container, opts, current, onPick) {
@@ -92,10 +90,6 @@ export function renderAgenda(vm) {
   r.jour.replaceChildren(...vm.jours.map((d) => h('option', { value: d.iso, selected: d.iso === vm.jour }, d.label)));
   r.jour.disabled = !vm.jours.length;
   segBtns(r.antennes, [{ value: 'all', label: 'Toutes' }].concat(vm.antennes), vm.antenne, handlers.onAntenne);
-  segBtns(r.modes, [
-    { value: 'opt', label: 'Optimisé' },
-    { value: 'cmp', label: 'Optimisé vs actuel', disabled: !vm.cmpDisponible, title: vm.cmpDisponible ? null : vm.cmpTitre }
-  ], vm.mode, handlers.onMode);
   r.summary.textContent = vm.summary || '';
 
   r.msg.hidden = !vm.message; r.msg.textContent = vm.message || '';

@@ -163,7 +163,7 @@ function render() {
   }
 
   if (opt.sansSolution) vm.message = 'VROOM n’a construit aucune tournée pour cette journée : aucun RDV n’a pu être affecté. Voir la liste « À placer ».';
-  else if (!pairs.length) vm.message = 'Aucun AMD sur ce département.';
+  else if (!pairs.length) vm.message = 'Aucun AMD sur cette antenne.';
   if (opt.sansSolution) vm.pairs = [];
 
   vm.nonAffectes = current.nonAffectes.map((u) => ({ key: u.key, jobId: u.jobId, titre: titreRdv(u.rd), motif: u.motif }));
