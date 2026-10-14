@@ -65,8 +65,11 @@ function motifs(R) {
   const ctx = { vehicles };
   if (tr.etat === 'ok' && tr.t) { ctx.aller = tr.t.aller; ctx.retour = tr.t.retour; }
   return (rd, jobId) => {
+    // mode « AMD bloqué » : RDV sans AMD utilisable, ou analyse restreinte au seul AMD du RDV
+    if (R.mode === 'amd-bloque' && rd.motifAmd) return rd.motifAmd;
+    const ctxRdv = R.mode === 'amd-bloque' && rd.amdIdx >= 0 ? Object.assign({}, ctx, { vehicles: vehicles.filter((v) => v.id === rd.amdIdx + 1) }) : ctx;
     const ji = jobInfo(rd, p);
-    const m = probableReason({ jobId, localise: !!(rd.geo && !rd.geo.none), o2: ji.o2, creneau: ji.creneau }, ctx);
+    const m = probableReason({ jobId, localise: !!(rd.geo && !rd.geo.none), o2: ji.o2, creneau: ji.creneau }, ctxRdv);
     return m === MOTIFS.sature && tr.etat === 'attente' ? 'analyse en cours…' : m;
   };
 }
@@ -134,7 +137,7 @@ function render() {
 
   // comparaison
   vm.cmpDisponible = !!act;
-  vm.cmpTitre = R.cmp ? 'Relancez l’optimisation de cette journée pour afficher l’emploi du temps actuel.' : 'Aucun RDV n’a d’AMD actuel reconnu : comparaison indisponible.';
+  vm.cmpTitre = R.mode === 'amd-bloque' ? 'Comparaison sans objet : les tournées respectent les AMD affectés dans Isadom.' : R.cmp ? 'Relancez l’optimisation de cette journée pour afficher l’emploi du temps actuel.' : 'Aucun RDV n’a d’AMD actuel reconnu : comparaison indisponible.';
   vm.mode = st.mode === 'cmp' && act ? 'cmp' : 'opt';
 
   const pairs = pairColumns(opt, act).filter((p) => vm.antenne === 'all' || p.opt.antenne === vm.antenne);

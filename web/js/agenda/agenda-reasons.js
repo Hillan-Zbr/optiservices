@@ -7,7 +7,7 @@ export const MOTIFS = {
   o2: 'aucun AMD avec la compétence O2',
   creneau: 'créneau hors des heures ouvrées',
   limites: 'hors limite de km ou d’heures',
-  sature: 'créneau saturé ou capacité insuffisante sur cette antenne'
+  sature: 'tournée saturée : créneau ou capacité insuffisante'
 };
 
 /**

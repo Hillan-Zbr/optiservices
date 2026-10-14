@@ -5,6 +5,8 @@ Document destiné à un agent de développement. Il décrit ce qu'il faut ajoute
 **Maquette de référence (rendu visuel à respecter)** : https://claude.ai/artifact/DGLerV3X31VcwoyF7j8tSo
 Ses données sont fictives et le coefficient ×1,4 sur les trajets « actuel » n'est qu'un placeholder : ne pas les reprendre.
 
+> **Mise à jour du 14/10/2026 — mode « AMD bloqué » par défaut.** Chaque RDV reste chez l'AMD affecté dans Isadom (compétence VROOM `100+i`) ; ce calcul unique est le résultat retenu, celui qui partira vers MJ2. Le 2e appel « répartition libre » est supprimé : le mode « Optimisé vs actuel » est donc désactivé pour les nouveaux résultats. Un RDV que son AMD ne peut pas tenir (créneau, heures ou km max, AMD absent, inconnu ou non renseigné) reste non affecté et ressort en alerte (bandeau en haut de l'écran 3, compteur dans l'en-tête de l'AMD, liste « RDV non affectés » / « À placer », journal WARN).
+
 ---
 
 ## 1. Objectif

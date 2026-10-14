@@ -121,7 +121,8 @@ const ISADOM_TYPES = [
 ];
 // liste vide au départ, comme les RDV : les AMD sont importés par CSV à chaque test
 const DEFAULT_AMD = [];
-// tous les AMD sont habilités O2 : pas de compétence VROOM. Un AMD décoché « Actif » est ignoré par l'optimisation.
+// tous les AMD sont habilités O2 : pas de compétence O2 côté VROOM. Les compétences servent à bloquer chaque RDV sur son AMD Isadom.
+// Un AMD décoché « Actif » est ignoré par l'optimisation.
 const amdActif = (a) => a.actif !== false;
 const DEMO_RDV = [
   ['Patient test 01', '04100', 'Manosque', 'LIV', 'matin', 'GALLIANO'],
@@ -144,7 +145,7 @@ const CSV_COLS = [
   ['adresse', 'Non', 'Numéro et rue. Vide : centre de la commune', '12 rue Exemple'],
   ['intervention', 'Oui', 'Code défini dans les paramètres (voir liste ci-dessous)', 'O2'],
   ['demi_journee', 'Oui', 'matin · mi-journee · apres-midi', 'matin'],
-  ['amd_actuel', 'Non', 'Nom de l’AMD prévu aujourd’hui, pour la comparaison', 'GALLIANO']
+  ['amd_actuel', 'Oui', 'Nom de l’AMD prévu (Isadom). Le RDV reste chez cet AMD ; sans AMD reconnu, il ressort en alerte', 'GALLIANO']
 ];
 
 /* ---------- état et persistance ---------- */
@@ -885,14 +886,14 @@ function importIsadom(rows, head, name) {
     `${multi} RDV à plusieurs types de visite : durée = somme × ${p.multiCoef} %`,
     outScope ? `${outScope} RDV sur des antennes hors test (non optimisés tant que l'antenne n'est pas incluse dans les paramètres)` : '',
     created.length ? `${created.length} type${created.length > 1 ? 's' : ''} de visite ajouté${created.length > 1 ? 's' : ''} aux paramètres : ${created.map((t) => `<code>${esc(t.code)}</code> ${t.duree} min`).join(', ')}` : '',
-    unknownAmd.length ? `${unknownAmd.length} AMD absent${unknownAmd.length > 1 ? 's' : ''} de la liste (comparaison impossible pour leurs RDV) : ${unknownAmd.map(([c, n]) => esc(n) + ' <span class="mono">(' + esc(c) + ')</span>').join(', ')} <button class="btn2" id="amd-from-isadom" type="button">Ajouter ${unknownAmd.length > 1 ? 'ces AMD' : 'cet AMD'}</button>` : ''
+    unknownAmd.length ? `${unknownAmd.length} AMD absent${unknownAmd.length > 1 ? 's' : ''} de la liste (leurs RDV ne pourront pas être placés) : ${unknownAmd.map(([c, n]) => esc(n) + ' <span class="mono">(' + esc(c) + ')</span>').join(', ')} <button class="btn2" id="amd-from-isadom" type="button">Ajouter ${unknownAmd.length > 1 ? 'ces AMD' : 'cet AMD'}</button>` : ''
   ].filter(Boolean);
   const all = errs.concat(warns);
   logLines(name, errs, warns);
   created.forEach((t) => (t.connu
     ? J.info('import', 'Type de visite ajouté', `${t.code} · ${t.nom} : ${t.duree} min (durée métier Isadom)`, 'Fichier : ' + name)
     : J.warn('import', 'Type de visite inconnu ajouté', `${t.code} ajouté aux paramètres avec ${t.duree} min par défaut`, 'Durée à confirmer dans les paramètres · fichier : ' + name)));
-  if (unknownAmd.length) J.warn('import', 'AMD inconnus', `${unknownAmd.length} AMD absent${unknownAmd.length > 1 ? 's' : ''} de la liste : comparaison impossible pour leurs RDV`, unknownAmd.map(([c, n]) => `${n} (${c})`));
+  if (unknownAmd.length) J.warn('import', 'AMD inconnus', `${unknownAmd.length} AMD absent${unknownAmd.length > 1 ? 's' : ''} de la liste : leurs RDV ne pourront pas être placés`, unknownAmd.map(([c, n]) => `${n} (${c})`));
   if (outScope) J.info('import', 'RDV hors test', `${outScope} RDV sur des antennes non incluses dans le test`);
   if (geoRejet.length) J.warn('import', 'Coordonnées hors zone', `${geoRejet.length} RDV avec des coordonnées Isadom hors PACA / Corse : regéocodés par l'adresse`, geoRejet.map((id) => 'RDV ' + id));
   if (removed) J.info('import', 'RDV retirés', `${removed} RDV absent${removed > 1 ? 's' : ''} du nouvel export (annulés ou déplacés dans Isadom)`);
@@ -928,6 +929,25 @@ function vehicleWindow(a, p) {
 const sameAmd = (name, a) => { const n = norm(name); const m = norm(a.nom); return !!n && (m === n || m.startsWith(n + ' ') || m.includes(n)); };
 /* AMD actuel d'un RDV : par code Isadom quand les deux sont connus, sinon par le nom */
 const amdMatch = (rd, a) => (rd.amdCode && a.code ? String(a.code).trim() === String(rd.amdCode).trim() : sameAmd(rd.amdActuel, a));
+/* Mode « AMD bloqué » (par défaut) : chaque RDV reste chez l'AMD affecté dans Isadom, VROOM ne calcule que l'ordre de passage.
+   Compétence VROOM 100 + i = AMD n° i ; un RDV sans AMD utilisable reçoit SKILL_SANS_AMD, qu'aucun véhicule ne possède :
+   VROOM le laisse non affecté au lieu de le donner à un collègue. */
+const SKILL_SANS_AMD = 99;
+const MOTIFS_AMD = {
+  aucun: 'aucun AMD prévu dans Isadom',
+  inconnu: 'AMD prévu inconnu de la liste des AMD',
+  absent: 'AMD prévu absent ce jour',
+  indispo: 'AMD prévu inactif ou rattaché à une antenne hors test'
+};
+/* AMD d'un RDV parmi les AMD disponibles : { idx } (index dans amds) ou { idx: -1, motif } */
+function amdDuRdv(rd, amds) {
+  if (!String(rd.amdActuel || '').trim() && !String(rd.amdCode || '').trim()) return { idx: -1, motif: MOTIFS_AMD.aucun };
+  const idx = amds.findIndex((a) => amdMatch(rd, a));
+  if (idx >= 0) return { idx };
+  const tous = state.amd.find((a) => amdMatch(rd, a));
+  if (!tous) return { idx: -1, motif: MOTIFS_AMD.inconnu };
+  return { idx: -1, motif: tous.dispo === 'absent' ? MOTIFS_AMD.absent : MOTIFS_AMD.indispo };
+}
 
 async function optimize() {
   const onResult = location.hash === '#resultat';
@@ -969,7 +989,7 @@ async function optimize() {
       const v = {
         id: i + 1, description: a.nom, profile: 'car', start: loc, end: loc,
         time_window: vehicleWindow(a, p), speed_factor: Math.min(5, Math.max(0.2, sf)),
-        skills: []
+        skills: [100 + i] // AMD bloqué : ne reçoit que ses propres RDV
       };
       if (a.hmax > 0) v.max_travel_time = Math.round(a.hmax * 3600);
       if (a.kmmax > 0) v.max_distance = Math.round(a.kmmax * 1000);
@@ -978,11 +998,14 @@ async function optimize() {
       }
       return v;
     });
-    const buildJobs = () => jobsR.map((r, j) => ({
-      id: j + 1, description: r.patient, location: [r.geo.lon, r.geo.lat],
-      setup: p.stationnement * 60, service: rdvDuree(r, p) * 60,
-      time_windows: [rdvWindow(r, p)], skills: []
-    }));
+    const buildJobs = () => jobsR.map((r, j) => {
+      const { idx } = amdDuRdv(r, amds);
+      return {
+        id: j + 1, description: r.patient, location: [r.geo.lon, r.geo.lat],
+        setup: p.stationnement * 60, service: rdvDuree(r, p) * 60,
+        time_windows: [rdvWindow(r, p)], skills: [idx >= 0 ? 100 + idx : SKILL_SANS_AMD]
+      };
+    });
     let req, res;
     // un RDV qu'OSRM ne sait pas rejoindre fait échouer tout le calcul : on l'écarte et on relance
     for (let essai = 0; ; essai++) {
@@ -997,23 +1020,18 @@ async function optimize() {
       }
     }
 
-    let cmp = null, resAct = null;
-    const withCur = jobsR.map((r, j) => ({ j, a: amds.findIndex((a) => amdMatch(r, a)) })).filter((x) => x.a >= 0);
-    if (withCur.length) {
-      const creq = clone(req); creq.options = { g: false };
-      creq.vehicles.forEach((v, i) => { v.skills = v.skills.concat([100 + i]); });
-      creq.jobs = withCur.map(({ j, a }) => Object.assign(clone(req.jobs[j]), { skills: req.jobs[j].skills.concat([100 + a]) }));
-      const keep = new Set(withCur.map((x) => x.j + 1));
-      const cres = await callVroom(creq);
-      resAct = cres; // gardé en entier pour la voie « actuel » de l'agenda
-      const optSub = sumRoutes(res, keep);
-      cmp = { act: summarize(cres), opt: optSub, n: withCur.length, total: jobsR.length };
-    }
-    state.results[state.date] = { date: state.date, at: new Date().toISOString(), amds: clone(amds), rdv: clone(jobsR), excluded: clone(excluded), res, resAct, cmp };
+    // l'AMD retenu (ou le motif d'impossibilité) accompagne chaque RDV du résultat
+    const rdvR = jobsR.map((r) => { const m = amdDuRdv(r, amds); return Object.assign(clone(r), { amdIdx: m.idx, motifAmd: m.motif || '' }); });
+    // plus de 2e calcul « répartition libre » : le résultat retenu (envoyé à MJ2) respecte les affectations Isadom
+    state.results[state.date] = { date: state.date, at: new Date().toISOString(), mode: 'amd-bloque', amds: clone(amds), rdv: rdvR, excluded: clone(excluded), res, resAct: null, cmp: null };
     save();
     J.info('optimisation', 'Optimisation terminée', `Journée du ${frDate(state.date)} : ${res.routes.length} AMD mobilisé${res.routes.length > 1 ? 's' : ''} · ${fmtKm(res.summary.distance)} · ${fmtDur(res.summary.duration)} de conduite`,
-      { duree_calcul: ((Date.now() - t0) / 1000).toFixed(1) + ' s', rdv_planifies: jobsR.length - res.unassigned.length, gain_km: cmp ? fmtKm(cmp.act.distance - cmp.opt.distance) : '' });
-    if (res.unassigned.length) J.warn('optimisation', 'RDV non affectés', `${res.unassigned.length} RDV impossible${res.unassigned.length > 1 ? 's' : ''} à placer le ${frDate(state.date)}`, res.unassigned.map((u) => rdvRef(jobsR[u.id - 1])));
+      { mode: 'AMD bloqué (affectations Isadom conservées)', duree_calcul: ((Date.now() - t0) / 1000).toFixed(1) + ' s', rdv_planifies: jobsR.length - res.unassigned.length });
+    if (res.unassigned.length) {
+      const why = motifNonAffecte(state.results[state.date]);
+      J.warn('optimisation', 'RDV non tenus par leur AMD', `${res.unassigned.length} RDV ne peu${res.unassigned.length > 1 ? 'vent' : 't'} pas être tenu${res.unassigned.length > 1 ? 's' : ''} par leur AMD le ${frDate(state.date)} : à reprendre dans Isadom`,
+        res.unassigned.map((u) => { const rd = rdvR[u.id - 1]; return `${rdvRef(rd)} · AMD ${rd.amdActuel || '—'} · ${why(rd)}`; }));
+    }
     alertMsg(msg, '');
     if (onResult) renderResult(); else location.hash = '#resultat';
     openStats();
@@ -1074,6 +1092,7 @@ function renderDayNav() {
   $('#r-pos').textContent = days.length > 1 && i >= 0 ? `Journée ${i + 1} / ${days.length}` : '';
 }
 function clearResult() {
+  renderAlerteNonTenus(null, []);
   $('#r-routes').innerHTML = ''; $('#r-compare').hidden = true; unRows = null; renderUnassigned();
   if (layerR) { layerR.remove(); layerR = null; }
 }
@@ -1120,12 +1139,18 @@ function renderResult() {
     if (R.cmp.n < R.cmp.total) $('#t-compare').insertAdjacentHTML('beforeend', `<tr><td colspan="4" class="hint">Comparaison partielle : ${R.cmp.n} RDV sur ${R.cmp.total} ont un AMD actuel reconnu. Les totaux optimisés portent sur tous les RDV.</td></tr>`);
   } else $('#r-compare').hidden = true;
 
+  // alerte : RDV que VROOM ne peut pas placer chez leur AMD (mode « AMD bloqué »)
+  const nonTenus = res.unassigned.map((u) => R.rdv[u.id - 1]).filter(Boolean);
+  renderAlerteNonTenus(R, nonTenus);
+
   // tournées
   box.innerHTML = R.amds.map((a, i) => {
     const vid = i + 1; const col = COLORS[i % COLORS.length];
     const r = res.routes.find((x) => x.vehicle === vid);
     const d = depotOf(a.depot) || { nom: a.depot };
-    if (!r) return `<section class="route"><div class="route-h"><div class="who"><span class="dot" style="background:${col}"></span><b>${esc(a.nom)}</b><span>${esc(d.nom)}</span></div><div class="tot mono"><span>0 RDV</span></div></div><div class="empty">Aucun RDV affecté : AMD disponible pour une autre mission.</div></section>`;
+    const nNonTenus = nonTenus.filter((rd) => rd.amdIdx === i).length;
+    const nonTenusHtml = nNonTenus ? `<span class="over" title="RDV de cet AMD impossibles à placer : voir « RDV non affectés »">⚠ ${nNonTenus} non tenu${nNonTenus > 1 ? 's' : ''}</span>` : '';
+    if (!r) return `<section class="route"><div class="route-h"><div class="who"><span class="dot" style="background:${col}"></span><b>${esc(a.nom)}</b><span>${esc(d.nom)}</span></div><div class="tot mono"><span>0 RDV</span>${nonTenusHtml}</div></div><div class="empty">${nNonTenus ? 'Aucun RDV ne tient dans la journée de cet AMD : voir « RDV non affectés ».' : 'Aucun RDV prévu pour cet AMD.'}</div></section>`;
     const jobsN = r.steps.filter((s) => s.type === 'job').length;
     const kmOver = a.kmmax > 0 && r.distance > a.kmmax * 1000;
     const hOver = a.hmax > 0 && r.duration > a.hmax * 3600;
@@ -1144,7 +1169,7 @@ function renderResult() {
         <span class="badge ${c.badge}" title="${esc(rdvWindowLabel(rd))}">${rd.hDeb ? esc(rd.hDeb + '–' + rd.hFin) : c.nom}</span></li>`;
     }).join('');
     return `<section class="route"><div class="route-h"><div class="who"><span class="dot" style="background:${col}"></span><b>${esc(a.nom)}</b><span>${esc(d.nom)}</span></div>
-      <div class="tot mono"><span>${jobsN} RDV</span><span class="${kmOver ? 'over' : ''}">${fmtKm(r.distance)}${a.kmmax ? ' / ' + a.kmmax + ' km' : ''}</span><span class="${hOver ? 'over' : ''}">${fmtDur(r.duration)}${a.hmax ? ' / ' + a.hmax + ' h' : ''} conduite</span><span>${s2hm(start.arrival)}–${s2hm(end.arrival)}</span><button class="btn2 small" type="button" data-csv-amd="${i}" title="Exporter l'ordre de passage de ${esc(a.nom)} (CSV) pour le comparer à l'existant">CSV</button></div></div>
+      <div class="tot mono"><span>${jobsN} RDV</span>${nonTenusHtml}<span class="${kmOver ? 'over' : ''}">${fmtKm(r.distance)}${a.kmmax ? ' / ' + a.kmmax + ' km' : ''}</span><span class="${hOver ? 'over' : ''}">${fmtDur(r.duration)}${a.hmax ? ' / ' + a.hmax + ' h' : ''} conduite</span><span>${s2hm(start.arrival)}–${s2hm(end.arrival)}</span><button class="btn2 small" type="button" data-csv-amd="${i}" title="Exporter l'ordre de passage de ${esc(a.nom)} (CSV) pour le comparer à l'existant">CSV</button></div></div>
       <ol class="steps">${li}</ol></section>`;
   }).join('');
 
@@ -1156,9 +1181,41 @@ function renderResult() {
   drawResultMap(R);
   appBus.dispatchEvent(new CustomEvent('render'));
 }
+/* bandeau d'alerte en haut de l'écran Résultat : les RDV non tenus ne doivent pas passer inaperçus */
+function renderAlerteNonTenus(R, nonTenus) {
+  const el = $('#r-alerte'); if (!el) return;
+  if (!R || !nonTenus.length) { el.hidden = true; el.innerHTML = ''; return; }
+  const n = nonTenus.length; const why = motifNonAffecte(R);
+  const parAmd = new Map();
+  nonTenus.forEach((rd) => { const k = rd.amdActuel || '(sans AMD)'; parAmd.set(k, (parAmd.get(k) || 0) + 1); });
+  const parMotif = new Map();
+  nonTenus.forEach((rd) => { const m = why(rd); parMotif.set(m, (parMotif.get(m) || 0) + 1); });
+  const titre = R.mode === 'amd-bloque'
+    ? `⚠ ${n} RDV ne peu${n > 1 ? 'vent' : 't'} pas être tenu${n > 1 ? 's' : ''} par leur AMD Isadom`
+    : `⚠ ${n} RDV non affecté${n > 1 ? 's' : ''}`;
+  el.className = 'msg err';
+  el.innerHTML = `<b>${titre}</b> — ${n > 1 ? 'ils ne figurent' : 'il ne figure'} dans aucune tournée. À reprendre dans Isadom (changer d'AMD, de créneau ou de jour), puis rafraîchir et relancer l'optimisation.
+    <div class="hint">Par AMD : ${[...parAmd].map(([k, v]) => `${esc(k)} (${v})`).join(' · ')}</div>
+    <div class="hint">Motifs : ${[...parMotif].map(([k, v]) => `${esc(k)} (${v})`).join(' · ')}</div>
+    <a href="#r-unassigned" class="noprint" data-voir-non-tenus>Voir la liste détaillée</a>`;
+  el.hidden = false;
+}
+document.addEventListener('click', (e) => {
+  const a = e.target.closest('[data-voir-non-tenus]'); if (!a) return;
+  e.preventDefault(); const t = $('#r-unassigned'); if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' });
+});
 /* motif d'un RDV que VROOM n'a pas pu placer (la réponse VROOM n'en donne pas) */
 const motifNonAffecte = (R) => (rd) => {
   const c = rdvWindow(rd);
+  if (R.mode === 'amd-bloque') {
+    if (rd.motifAmd) return rd.motifAmd;
+    const a = R.amds[rd.amdIdx];
+    if (!a) return MOTIFS_AMD.inconnu;
+    const w = vehicleWindow(a, state.params);
+    if (!(w[0] < c[1] && w[1] > c[0])) return 'créneau hors des heures de travail de l’AMD';
+    return 'tournée de l’AMD saturée : créneau, heures ou km max dépassés';
+  }
+  // résultats calculés avant le mode « AMD bloqué » (répartition libre)
   if (!R.amds.some((a) => { const w = vehicleWindow(a, state.params); return w[0] < c[1] && w[1] > c[0]; })) return 'aucun AMD disponible sur ce créneau';
   return 'créneau, heures ou km max trop serrés';
 };
