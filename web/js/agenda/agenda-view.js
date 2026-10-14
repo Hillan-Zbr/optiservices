@@ -128,7 +128,7 @@ function renderGrid(vm) {
     if (cmp) fin += act && act.retourMin != null ? ' (actuel ' + fmtHeure(act.retourMin) + ')' : ' (actuel —)';
     const head = h('div.ag-colh', {},
       h('div.ag-amd', {}, opt.name),
-      h('div.ag-sub', {}, 'Dép. ' + opt.antenneNom + ' · ' + opt.nbRdv + ' RDV'),
+      h('div.ag-sub', {}, 'Antenne ' + opt.antenneNom + ' · ' + opt.nbRdv + ' RDV'),
       h('div.ag-fin' + (over ? '.over' : ''), {}, fin, over ? h('span', {}, ' ⚠', h('span.ag-sr', {}, ' retour après les heures ouvrées')) : null)
     );
     const shades = [
