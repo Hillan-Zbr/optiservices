@@ -619,7 +619,7 @@ function bindPlan() {
         <button class="btn2 danger" id="rdv-clear-ok" type="button">Confirmer</button><button class="btn2" id="rdv-clear-no" type="button">Annuler</button></span>`;
       return;
     }
-    if (t.id === 'rdv-clear-ok') { J.warn('action', 'Tous les RDV supprimés', `${state.rdv.length} RDV supprimés`); state.rdv = []; save(); $('#csv-report').hidden = true; renderPlan(); return; }
+    if (t.id === 'rdv-clear-ok') { J.warn('action', 'Tous les RDV supprimés', `${state.rdv.length} RDV supprimés`); state.rdv = []; save(); $('#csv-report').hidden = true; alertMsg('#pl-msg', ''); renderPlan(); return; }
     if (t.id === 'rdv-clear-no') { resetDelZone(); }
     if (t.id === 'amd-clear') {
       if (!state.amd.length) return;
