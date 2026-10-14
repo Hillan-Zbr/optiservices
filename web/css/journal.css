@@ -21,6 +21,7 @@
 .dlg-h{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;padding:18px 20px 12px;border-bottom:1px solid var(--line2)}
 .dlg-h .icon-btn:hover{background:var(--accent-soft);color:var(--fg)}
 .dlg-h .hint{margin-top:4px}
+.st-actions{display:flex;align-items:center;gap:8px;flex:none}
 .dlg-f{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;padding:14px 20px;background:#f8fafc;border-bottom:1px solid var(--line2)}
 .dlg-f > div{width:150px}
 .dlg-f > div.grow{flex:1 1 220px;width:auto}

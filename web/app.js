@@ -1164,6 +1164,7 @@ const motifNonAffecte = (R) => (rd) => {
 };
 
 /* ---------- stats d'optimisation : compte rendu de la journée affichée ---------- */
+let statsCour = null; // { R, S } du compte rendu ouvert, pour l'export CSV
 function openStats() {
   const R = state.results[state.date]; const dlg = $('#dlg-stats');
   if (!R || !window.OptiStats || !dlg) return;
@@ -1187,8 +1188,25 @@ function openStats() {
       <div class="scroll"><table class="tbl"><thead><tr><th>N° RDV</th><th>Code Pat.</th><th>Patient</th><th>CP</th><th>Ville</th><th>Type de visite</th><th>Créneau</th><th>AMD prévu</th><th>Étape</th></tr></thead><tbody>
         ${m.liste.map(({ rd, etape }) => `<tr><td class="mono gras">${esc(rd.idRdv || '')}</td><td class="mono">${esc(rd.patientCode || '')}</td><td>${esc(rd.patient)}</td><td class="mono">${esc(rd.cp)}</td><td>${esc(rd.ville || '?')}</td><td>${rdvTypeHtml(rd)}</td><td class="mono">${esc(rd.hDeb ? rd.hDeb + '–' + rd.hFin : crenOf(rd.cren).nom)}</td><td>${esc(rd.amdActuel)}</td><td class="hint">${esc(etape)}</td></tr>`).join('')}
       </tbody></table></div></details>`).join('') || '<p class="hint">Tous les RDV de la journée sont planifiés.</p>'}`;
+  statsCour = { R, S };
   if (!dlg.open) dlg.showModal();
   J.info('action', "Stats d'optimisation consultées", 'Journée du ' + frDate(S.date), { rdv: S.nRdv, amd: S.nAmd, non_planifies: S.nonPlanifies.total });
+}
+/* export de tous les RDV du compte rendu : planifiés (AMD, ordre, heure) puis non planifiés (motif, étape) */
+function exportStatsCsv() {
+  if (!statsCour) return;
+  const { R, S } = statsCour;
+  const q = (v) => '"' + String(v ?? '').replace(/"/g, '""') + '"';
+  const lines = [['date', 'id_rdv', 'code_patient', 'patient', 'code_postal', 'ville', 'types_visite', 'creneau', 'amd_prevu', 'statut', 'amd_optimise', 'ordre', 'heure_arrivee', 'motif', 'etape'].join(';')];
+  const ligne = (rd, suite) => lines.push([frDate(rd.date || R.date), rd.idRdv || '', rd.patientCode || '', rd.patient, rd.cp, rd.ville, rdvTypes(rd).join(' + '), rdvWindowLabel(rd), rd.amdActuel || '', ...suite].map(q).join(';'));
+  R.amds.forEach((a, i) => {
+    const r = R.res.routes.find((x) => x.vehicle === i + 1); if (!r) return;
+    r.steps.filter((s) => s.type === 'job').forEach((s, n) => ligne(R.rdv[s.job - 1], ['Planifié', a.nom, n + 1, s2hm(s.arrival), '', '']));
+  });
+  S.nonPlanifies.parMotif.forEach((m) => m.liste.forEach(({ rd, etape }) => ligne(rd, ['Non planifié', '', '', '', m.motif, etape])));
+  const nom = `rdv_${R.date}.csv`;
+  download(nom, '﻿' + lines.join('\r\n'), 'text/csv;charset=utf-8');
+  J.info('action', 'Export des RDV du compte rendu', `${nom} · ${lines.length - 1} RDV`);
 }
 
 let unRows = null;
@@ -1438,6 +1456,7 @@ bindPlan();
 $('#r-csv').addEventListener('click', exportCsv);
 $('#r-stats').addEventListener('click', openStats);
 $('#st-close').addEventListener('click', () => $('#dlg-stats').close());
+$('#st-csv').addEventListener('click', exportStatsCsv);
 $('#r-print').addEventListener('click', () => { J.info('action', 'Impression des feuilles de route', 'Journée du ' + frDate(state.date)); window.print(); });
 window.addEventListener('hashchange', route);
 route();
