@@ -1,6 +1,6 @@
 /* Optiservices — vue Agenda : constantes réglables (un seul endroit) */
 
-export const PX_PAR_HEURE = 72;
+export const PX_PAR_HEURE = 108;
 export const HAUTEUR_ENTETE_COLONNE = 64;
 export const SEUIL_PROCHE_FIN_CRENEAU_MIN = 15;
 export const LARGEUR_MIN_COLONNE = 104;
