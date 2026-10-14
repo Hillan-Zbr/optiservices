@@ -32,7 +32,7 @@
   <div class="head">
     <div>
       <h1>Paramètres AMD</h1>
-      <p class="sub">Journée type des AMD et points de départ. Enregistrement automatique dans ce navigateur.</p>
+      <p class="sub">AMD, journée type et points de départ. Enregistrement automatique dans ce navigateur.</p>
     </div>
     <div class="actions">
       <a class="btn2" href="#trajet">Test : trajet entre deux villes</a>
@@ -42,6 +42,40 @@
       <span class="saved" hidden>Enregistré</span>
     </div>
   </div>
+
+  <section class="card">
+    <div class="row-between">
+      <h2>AMD disponibles <span class="count" id="c-amd"></span></h2>
+      <div class="actions">
+        <label class="btn2" for="amd-csv-file">Importer des AMD (CSV)</label>
+        <input type="file" id="amd-csv-file" accept=".csv,text/csv" hidden>
+        <button class="btn2" id="amd-add" type="button">+ Ajouter un AMD</button>
+        <span id="amd-del-zone"><button class="btn2 danger" id="amd-clear" type="button">Tout supprimer</button></span>
+      </div>
+    </div>
+    <div id="amd-report" hidden></div>
+    <div class="scroll">
+      <table class="tbl">
+        <thead><tr class="dd-head"><th>Actif<button class="dd-btn" type="button" data-dd-t="amd" data-dd="actif" title="Filtrer ou trier" aria-label="Filtrer ou trier la colonne Actif" aria-haspopup="true">▾</button></th><th>Code Isadom<button class="dd-btn" type="button" data-dd-t="amd" data-dd="code" title="Filtrer ou trier" aria-label="Filtrer ou trier la colonne Code Isadom" aria-haspopup="true">▾</button></th><th>Nom<button class="dd-btn" type="button" data-dd-t="amd" data-dd="nom" title="Filtrer ou trier" aria-label="Filtrer ou trier la colonne Nom" aria-haspopup="true">▾</button></th><th>Point de départ<button class="dd-btn" type="button" data-dd-t="amd" data-dd="depot" title="Filtrer ou trier" aria-label="Filtrer ou trier la colonne Point de départ" aria-haspopup="true">▾</button></th><th>Disponible<button class="dd-btn" type="button" data-dd-t="amd" data-dd="dispo" title="Filtrer ou trier" aria-label="Filtrer ou trier la colonne Disponible" aria-haspopup="true">▾</button></th><th>Heures max<button class="dd-btn" type="button" data-dd-t="amd" data-dd="hmax" title="Filtrer ou trier" aria-label="Filtrer ou trier la colonne Heures max" aria-haspopup="true">▾</button></th><th>Km max<button class="dd-btn" type="button" data-dd-t="amd" data-dd="kmmax" title="Filtrer ou trier" aria-label="Filtrer ou trier la colonne Km max" aria-haspopup="true">▾</button></th><th></th></tr></thead>
+        <tbody id="t-amd"></tbody>
+      </table>
+    </div>
+    <details class="csvfmt">
+      <summary>Format du fichier CSV des AMD</summary>
+      <p><b>Export Isadom</b> (en-tête <code>IdAmd;AmdCode;Civilite;AmdNom;AmdPrenom;IdAntenne;AntenneCode;Antenne;Mail;TelGsm</code>) : reconnu automatiquement. Le nom affiché est « NOM Prénom », le point de départ vient de l'antenne ; le texte <code>NULL</code> est traité comme vide, et le mail, le téléphone et la civilité ne sont pas lus.</p>
+      <p>Fichier texte UTF-8, séparateur point-virgule <code>;</code>, une ligne d'en-tête puis une ligne par AMD. Un AMD déjà présent est retrouvé par son code Isadom (sinon par son nom) et mis à jour ; seules les colonnes présentes dans le fichier modifient sa fiche. Les AMD absents du fichier sont conservés.</p>
+      <div class="scroll">
+        <table class="tbl">
+          <thead><tr><th>Colonne</th><th>Obligatoire</th><th>Valeurs attendues</th><th>Exemple</th></tr></thead>
+          <tbody id="t-amdcsvfmt"></tbody>
+        </table>
+      </div>
+      <pre class="code">code;nom;depart;disponible;heures_max;km_max
+AMD01;DUPONT Paul;ARARD 13;journee;5;250
+AMD02;MARTIN Julie;ARARD 04/05;matin;5;250</pre>
+      <p class="hint">Les codes de l'exemple sont fictifs : utilisez les codes Isadom réels (AnnAnnuaire.sCodeAnnuaire).</p>
+    </details>
+  </section>
 
   <div class="grid2">
     <section class="card">
@@ -80,10 +114,51 @@
   <div class="head">
     <div>
       <h1>Paramètres RDV</h1>
-      <p class="sub">Créneaux et durées des visites. Enregistrement automatique dans ce navigateur.</p>
+      <p class="sub">Rendez-vous patients, créneaux et temps sur place. Enregistrement automatique dans ce navigateur.</p>
     </div>
     <div class="actions"><span class="saved" hidden>Enregistré</span></div>
   </div>
+
+  <section class="card">
+    <div class="row-between">
+      <h2>Rendez-vous patients <span class="count" id="c-rdv"></span></h2>
+      <div class="actions">
+        <label class="btn2" for="csv-file">Importer des RDV (CSV)</label>
+        <input type="file" id="csv-file" accept=".csv,text/csv" hidden>
+        <button class="btn2" id="rdv-add" type="button">+ Ajouter un RDV</button>
+        <button class="btn2" id="rdv-demo" type="button">Charger l'exemple</button>
+        <span id="del-zone"><button class="btn2 danger" id="rdv-clear" type="button">Tout supprimer</button></span>
+      </div>
+    </div>
+    <div id="csv-report" hidden></div>
+    <div class="scroll">
+      <table class="tbl">
+        <thead><tr class="dd-head"><th>Date<button class="dd-btn" type="button" data-dd="date" title="Filtrer par valeur" aria-label="Filtrer la colonne Date par valeur" aria-haspopup="true">▾</button></th><th>Code Pat.<button class="dd-btn" type="button" data-dd="code" title="Filtrer par valeur" aria-label="Filtrer la colonne Code Pat. par valeur" aria-haspopup="true">▾</button></th><th>Patient<button class="dd-btn" type="button" data-dd="patient" title="Filtrer par valeur" aria-label="Filtrer la colonne Patient par valeur" aria-haspopup="true">▾</button></th><th>CP<button class="dd-btn" type="button" data-dd="cp" title="Filtrer par valeur" aria-label="Filtrer la colonne CP par valeur" aria-haspopup="true">▾</button></th><th>Ville<button class="dd-btn" type="button" data-dd="ville" title="Filtrer par valeur" aria-label="Filtrer la colonne Ville par valeur" aria-haspopup="true">▾</button></th><th>Adresse<button class="dd-btn" type="button" data-dd="adresse" title="Filtrer par valeur" aria-label="Filtrer la colonne Adresse par valeur" aria-haspopup="true">▾</button></th><th>Intervention<button class="dd-btn" type="button" data-dd="type" title="Filtrer par valeur" aria-label="Filtrer la colonne Intervention par valeur" aria-haspopup="true">▾</button></th><th>Visite | Prestation<button class="dd-btn" type="button" data-dd="prest" title="Filtrer par valeur" aria-label="Filtrer la colonne Visite | Prestation par valeur" aria-haspopup="true">▾</button></th><th>Demi-journée<button class="dd-btn" type="button" data-dd="cren" title="Filtrer par valeur" aria-label="Filtrer la colonne Demi-journée par valeur" aria-haspopup="true">▾</button></th><th>AMD prévu aujourd'hui<button class="dd-btn" type="button" data-dd="amd" title="Filtrer par valeur" aria-label="Filtrer la colonne AMD prévu aujourd'hui par valeur" aria-haspopup="true">▾</button></th><th>Localisation<button class="dd-btn" type="button" data-dd="geo" title="Filtrer par valeur" aria-label="Filtrer la colonne Localisation par valeur" aria-haspopup="true">▾</button></th><th></th></tr>
+          <tr class="filters"><th><input type="search" data-filter="date" placeholder="jj/mm" aria-label="Rechercher : date"></th><th><input type="search" data-filter="code" placeholder="Code" aria-label="Rechercher : code patient"></th><th><input type="search" data-filter="patient" placeholder="Rechercher…" aria-label="Rechercher : patient, n° RDV"></th><th><input type="search" data-filter="cp" placeholder="CP" aria-label="Rechercher : code postal"></th><th><input type="search" data-filter="ville" placeholder="Rechercher…" aria-label="Rechercher : ville"></th><th><input type="search" data-filter="adresse" placeholder="Rechercher…" aria-label="Rechercher : adresse"></th><th><input type="search" data-filter="type" placeholder="code ou libellé" aria-label="Rechercher : intervention"></th><th><input type="search" data-filter="prest" placeholder="Rechercher…" aria-label="Rechercher : visite | prestation"></th><th><input type="search" data-filter="cren" placeholder="matin, 08:15…" aria-label="Rechercher : créneau"></th><th><input type="search" data-filter="amd" placeholder="nom ou code" aria-label="Rechercher : AMD prévu"></th><th><input type="search" data-filter="geo" placeholder="isadom, hors zone…" aria-label="Rechercher : localisation"></th><th><button class="icon-btn" id="rdv-filter-clear" type="button" title="Effacer les recherches" aria-label="Effacer les recherches">×</button></th></tr></thead>
+        <tbody id="t-rdv"></tbody>
+      </table>
+    </div>
+    <p class="hint">Seuls les RDV de la date planifiée sont optimisés. La colonne « AMD prévu aujourd'hui » est facultative : elle sert à comparer la planification actuelle avec la proposition optimisée.</p>
+
+    <details class="csvfmt">
+      <summary>Format du fichier CSV à importer</summary>
+      <p><b>Export Isadom</b> (requête RDV v7, en-tête <code>IdRdv;TypeBesoin;DateRdv;HeureDebut;…</code>) : reconnu automatiquement. Les RDV déjà importés sont mis à jour par leur IdRdv, ceux qui ont disparu de l'export sur les mêmes dates sont retirés ; les coordonnées et les heures Isadom sont utilisées telles quelles, les types de visite inconnus sont ajoutés aux paramètres (20 min par défaut).</p>
+      <p>Fichier texte UTF-8, séparateur point-virgule <code>;</code>, une ligne d'en-tête puis une ligne par RDV. Depuis Excel : « Enregistrer sous › CSV UTF-8 (délimité par des points-virgules) ». Les RDV importés s'ajoutent à ceux déjà présents.</p>
+      <div class="scroll">
+        <table class="tbl">
+          <thead><tr><th>Colonne</th><th>Obligatoire</th><th>Valeurs attendues</th><th>Exemple</th></tr></thead>
+          <tbody id="t-csvfmt"></tbody>
+        </table>
+      </div>
+      <pre class="code">date;patient;code_postal;ville;adresse;intervention;demi_journee;amd_actuel
+16/10/2026;Patient test 01;04100;Manosque;;LIV;matin;GALLIANO
+16/10/2026;Patient test 08;04120;La Palud-sur-Verdon;;LIT;apres-midi;GALLIANO
+16/10/2026;Patient test 10;04000;Digne-les-Bains;12 rue Exemple;O2;matin;GUINET FONTAINE</pre>
+      <div class="form-row">
+        <span class="hint">Les lignes en erreur sont listées après l'import, sans bloquer les autres. Un code postal à 4 chiffres (zéro supprimé par Excel) est corrigé automatiquement.</span>
+      </div>
+    </details>
+  </section>
 
   <div class="grid2">
     <section class="card">
@@ -104,7 +179,8 @@
     </section>
   </div>
 
-  <section class="card">
+  <!-- masqué pour le POC : les durées restent appliquées -->
+  <section class="card" id="card-types" hidden>
     <div class="row-between">
       <h2>Types d'intervention</h2>
       <button class="btn2" id="type-add" type="button">+ Ajouter un type</button>
@@ -161,7 +237,7 @@
   <div class="head">
     <div>
       <h1>Planification de test</h1>
-      <p class="sub">Saisir ou importer une journée, puis lancer l'optimisation.</p>
+      <p class="sub">Choisir la date puis lancer l'optimisation. Les AMD et les RDV se gèrent dans les écrans Paramètres AMD et Paramètres RDV.</p>
     </div>
     <div class="actions">
       <div><label for="pl-date">Date planifiée</label><input id="pl-date" class="mono" placeholder="jj/mm/aaaa" maxlength="10" inputmode="numeric" autocomplete="off" style="width:140px"></div>
@@ -171,84 +247,11 @@
   <p class="msg" id="pl-msg" hidden></p>
   <section class="card ecartes" id="pl-ecartes" hidden>
     <h2>RDV qui ne pourront pas être optimisés <span class="count" id="c-pl-ecartes"></span></h2>
-    <p class="hint">Toutes dates confondues, sur les antennes incluses dans le test : adresse introuvable ou hors de la carte (PACA / Corse). Ces RDV seront écartés du calcul. Corrigez l'adresse ci-dessous ou dans Isadom, ou traitez-les manuellement.</p>
+    <p class="hint">Toutes dates confondues, sur les antennes incluses dans le test : adresse introuvable ou hors de la carte (PACA / Corse). Ces RDV seront écartés du calcul. Corrigez l'adresse dans l'écran Paramètres RDV ou dans Isadom, ou traitez-les manuellement.</p>
     <div class="scroll"><table class="tbl"><thead><tr><th>Date</th><th>Code Pat.</th><th>RDV</th><th>Patient</th><th>CP</th><th>Ville</th><th>Adresse</th><th>Intervention</th><th>Créneau</th><th>AMD prévu</th><th>Motif</th></tr></thead><tbody id="t-pl-ecartes"></tbody></table></div>
   </section>
 
-  <section class="card">
-    <div class="row-between">
-      <h2>AMD disponibles <span class="count" id="c-amd"></span></h2>
-      <div class="actions">
-        <label class="btn2" for="amd-csv-file">Importer des AMD (CSV)</label>
-        <input type="file" id="amd-csv-file" accept=".csv,text/csv" hidden>
-        <button class="btn2" id="amd-add" type="button">+ Ajouter un AMD</button>
-        <span id="amd-del-zone"><button class="btn2 danger" id="amd-clear" type="button">Tout supprimer</button></span>
-      </div>
-    </div>
-    <div id="amd-report" hidden></div>
-    <div class="scroll">
-      <table class="tbl">
-        <thead><tr class="dd-head"><th>Actif<button class="dd-btn" type="button" data-dd-t="amd" data-dd="actif" title="Filtrer ou trier" aria-label="Filtrer ou trier la colonne Actif" aria-haspopup="true">▾</button></th><th>Code Isadom<button class="dd-btn" type="button" data-dd-t="amd" data-dd="code" title="Filtrer ou trier" aria-label="Filtrer ou trier la colonne Code Isadom" aria-haspopup="true">▾</button></th><th>Nom<button class="dd-btn" type="button" data-dd-t="amd" data-dd="nom" title="Filtrer ou trier" aria-label="Filtrer ou trier la colonne Nom" aria-haspopup="true">▾</button></th><th>Point de départ<button class="dd-btn" type="button" data-dd-t="amd" data-dd="depot" title="Filtrer ou trier" aria-label="Filtrer ou trier la colonne Point de départ" aria-haspopup="true">▾</button></th><th>Disponible<button class="dd-btn" type="button" data-dd-t="amd" data-dd="dispo" title="Filtrer ou trier" aria-label="Filtrer ou trier la colonne Disponible" aria-haspopup="true">▾</button></th><th>Heures max<button class="dd-btn" type="button" data-dd-t="amd" data-dd="hmax" title="Filtrer ou trier" aria-label="Filtrer ou trier la colonne Heures max" aria-haspopup="true">▾</button></th><th>Km max<button class="dd-btn" type="button" data-dd-t="amd" data-dd="kmmax" title="Filtrer ou trier" aria-label="Filtrer ou trier la colonne Km max" aria-haspopup="true">▾</button></th><th></th></tr></thead>
-        <tbody id="t-amd"></tbody>
-      </table>
-    </div>
-    <details class="csvfmt">
-      <summary>Format du fichier CSV des AMD</summary>
-      <p><b>Export Isadom</b> (en-tête <code>IdAmd;AmdCode;Civilite;AmdNom;AmdPrenom;IdAntenne;AntenneCode;Antenne;Mail;TelGsm</code>) : reconnu automatiquement. Le nom affiché est « NOM Prénom », le point de départ vient de l'antenne ; le texte <code>NULL</code> est traité comme vide, et le mail, le téléphone et la civilité ne sont pas lus.</p>
-      <p>Fichier texte UTF-8, séparateur point-virgule <code>;</code>, une ligne d'en-tête puis une ligne par AMD. Un AMD déjà présent est retrouvé par son code Isadom (sinon par son nom) et mis à jour ; seules les colonnes présentes dans le fichier modifient sa fiche. Les AMD absents du fichier sont conservés.</p>
-      <div class="scroll">
-        <table class="tbl">
-          <thead><tr><th>Colonne</th><th>Obligatoire</th><th>Valeurs attendues</th><th>Exemple</th></tr></thead>
-          <tbody id="t-amdcsvfmt"></tbody>
-        </table>
-      </div>
-      <pre class="code">code;nom;depart;disponible;heures_max;km_max
-AMD01;DUPONT Paul;ARARD 13;journee;5;250
-AMD02;MARTIN Julie;ARARD 04/05;matin;5;250</pre>
-      <p class="hint">Les codes de l'exemple sont fictifs : utilisez les codes Isadom réels (AnnAnnuaire.sCodeAnnuaire).</p>
-    </details>
-  </section>
 
-  <section class="card">
-    <div class="row-between">
-      <h2>Rendez-vous patients <span class="count" id="c-rdv"></span></h2>
-      <div class="actions">
-        <label class="btn2" for="csv-file">Importer des RDV (CSV)</label>
-        <input type="file" id="csv-file" accept=".csv,text/csv" hidden>
-        <button class="btn2" id="rdv-add" type="button">+ Ajouter un RDV</button>
-        <button class="btn2" id="rdv-demo" type="button">Charger l'exemple</button>
-        <span id="del-zone"><button class="btn2 danger" id="rdv-clear" type="button">Tout supprimer</button></span>
-      </div>
-    </div>
-    <div id="csv-report" hidden></div>
-    <div class="scroll">
-      <table class="tbl">
-        <thead><tr class="dd-head"><th>Date<button class="dd-btn" type="button" data-dd="date" title="Filtrer par valeur" aria-label="Filtrer la colonne Date par valeur" aria-haspopup="true">▾</button></th><th>Code Pat.<button class="dd-btn" type="button" data-dd="code" title="Filtrer par valeur" aria-label="Filtrer la colonne Code Pat. par valeur" aria-haspopup="true">▾</button></th><th>Patient<button class="dd-btn" type="button" data-dd="patient" title="Filtrer par valeur" aria-label="Filtrer la colonne Patient par valeur" aria-haspopup="true">▾</button></th><th>CP<button class="dd-btn" type="button" data-dd="cp" title="Filtrer par valeur" aria-label="Filtrer la colonne CP par valeur" aria-haspopup="true">▾</button></th><th>Ville<button class="dd-btn" type="button" data-dd="ville" title="Filtrer par valeur" aria-label="Filtrer la colonne Ville par valeur" aria-haspopup="true">▾</button></th><th>Adresse<button class="dd-btn" type="button" data-dd="adresse" title="Filtrer par valeur" aria-label="Filtrer la colonne Adresse par valeur" aria-haspopup="true">▾</button></th><th>Intervention<button class="dd-btn" type="button" data-dd="type" title="Filtrer par valeur" aria-label="Filtrer la colonne Intervention par valeur" aria-haspopup="true">▾</button></th><th>Visite | Prestation<button class="dd-btn" type="button" data-dd="prest" title="Filtrer par valeur" aria-label="Filtrer la colonne Visite | Prestation par valeur" aria-haspopup="true">▾</button></th><th>Demi-journée<button class="dd-btn" type="button" data-dd="cren" title="Filtrer par valeur" aria-label="Filtrer la colonne Demi-journée par valeur" aria-haspopup="true">▾</button></th><th>AMD prévu aujourd'hui<button class="dd-btn" type="button" data-dd="amd" title="Filtrer par valeur" aria-label="Filtrer la colonne AMD prévu aujourd'hui par valeur" aria-haspopup="true">▾</button></th><th>Localisation<button class="dd-btn" type="button" data-dd="geo" title="Filtrer par valeur" aria-label="Filtrer la colonne Localisation par valeur" aria-haspopup="true">▾</button></th><th></th></tr>
-          <tr class="filters"><th><input type="search" data-filter="date" placeholder="jj/mm" aria-label="Rechercher : date"></th><th><input type="search" data-filter="code" placeholder="Code" aria-label="Rechercher : code patient"></th><th><input type="search" data-filter="patient" placeholder="Rechercher…" aria-label="Rechercher : patient, n° RDV"></th><th><input type="search" data-filter="cp" placeholder="CP" aria-label="Rechercher : code postal"></th><th><input type="search" data-filter="ville" placeholder="Rechercher…" aria-label="Rechercher : ville"></th><th><input type="search" data-filter="adresse" placeholder="Rechercher…" aria-label="Rechercher : adresse"></th><th><input type="search" data-filter="type" placeholder="code ou libellé" aria-label="Rechercher : intervention"></th><th><input type="search" data-filter="prest" placeholder="Rechercher…" aria-label="Rechercher : visite | prestation"></th><th><input type="search" data-filter="cren" placeholder="matin, 08:15…" aria-label="Rechercher : créneau"></th><th><input type="search" data-filter="amd" placeholder="nom ou code" aria-label="Rechercher : AMD prévu"></th><th><input type="search" data-filter="geo" placeholder="isadom, hors zone…" aria-label="Rechercher : localisation"></th><th><button class="icon-btn" id="rdv-filter-clear" type="button" title="Effacer les recherches" aria-label="Effacer les recherches">×</button></th></tr></thead>
-        <tbody id="t-rdv"></tbody>
-      </table>
-    </div>
-    <p class="hint">Seuls les RDV de la date planifiée sont optimisés. La colonne « AMD prévu aujourd'hui » est facultative : elle sert à comparer la planification actuelle avec la proposition optimisée.</p>
-
-    <details class="csvfmt">
-      <summary>Format du fichier CSV à importer</summary>
-      <p><b>Export Isadom</b> (requête RDV v7, en-tête <code>IdRdv;TypeBesoin;DateRdv;HeureDebut;…</code>) : reconnu automatiquement. Les RDV déjà importés sont mis à jour par leur IdRdv, ceux qui ont disparu de l'export sur les mêmes dates sont retirés ; les coordonnées et les heures Isadom sont utilisées telles quelles, les types de visite inconnus sont ajoutés aux paramètres (20 min par défaut).</p>
-      <p>Fichier texte UTF-8, séparateur point-virgule <code>;</code>, une ligne d'en-tête puis une ligne par RDV. Depuis Excel : « Enregistrer sous › CSV UTF-8 (délimité par des points-virgules) ». Les RDV importés s'ajoutent à ceux déjà présents.</p>
-      <div class="scroll">
-        <table class="tbl">
-          <thead><tr><th>Colonne</th><th>Obligatoire</th><th>Valeurs attendues</th><th>Exemple</th></tr></thead>
-          <tbody id="t-csvfmt"></tbody>
-        </table>
-      </div>
-      <pre class="code">date;patient;code_postal;ville;adresse;intervention;demi_journee;amd_actuel
-16/10/2026;Patient test 01;04100;Manosque;;LIV;matin;GALLIANO
-16/10/2026;Patient test 08;04120;La Palud-sur-Verdon;;LIT;apres-midi;GALLIANO
-16/10/2026;Patient test 10;04000;Digne-les-Bains;12 rue Exemple;O2;matin;GUINET FONTAINE</pre>
-      <div class="form-row">
-        <span class="hint">Les lignes en erreur sont listées après l'import, sans bloquer les autres. Un code postal à 4 chiffres (zéro supprimé par Excel) est corrigé automatiquement.</span>
-      </div>
-    </details>
-  </section>
 </section>
 
 <!-- ============ 4. RÉSULTAT ============ -->

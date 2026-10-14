@@ -191,7 +191,8 @@ function route() {
   const tab = v === 'trajet' ? 'parametres' : v;
   $$('.tabs a').forEach((a) => a.classList.toggle('on', a.dataset.tab === tab));
   if (v === 'parametres' || v === 'parametres-rdv') renderParams();
-  if (v === 'planification') renderPlan();
+  // les tableaux AMD et RDV sont sur les écrans de paramètres, les RDV écartés sur Planification
+  if (v === 'parametres' || v === 'parametres-rdv' || v === 'planification') renderPlan();
   if (v === 'resultat') renderResult();
   if (v === 'trajet') initTrajet();
   window.scrollTo(0, 0);
@@ -297,7 +298,7 @@ function bindParams() {
       if (el.dataset.k === 'actif') { d.actif = el.checked; J.info('parametres', d.actif ? 'Antenne incluse dans le test' : 'Antenne exclue du test', d.nom); }
       else if (el.dataset.k === 'isadom') { logChg(d.nom + ' : antenne Isadom', d.isadom, el.value.trim()); d.isadom = el.value.trim(); }
       else { logChg(d.nom + ' : adresse', d.adr, el.value); d.adr = el.value; delete d.geo; }
-      renderParams();
+      renderParams(); renderPlan();
     } else return;
     save(true);
   });
@@ -548,7 +549,9 @@ function resetAmdDelZone() {
 }
 let filterTimer;
 function bindPlan() {
-  const v = $('#v-planification');
+  // tableaux AMD (Paramètres AMD), RDV (Paramètres RDV) et date (Planification)
+  const vues = [$('#v-planification'), $('#v-parametres'), $('#v-parametres-rdv')];
+  const v = { addEventListener: (type, fn) => vues.forEach((el) => el.addEventListener(type, fn)) };
   v.addEventListener('change', (e) => {
     const el = e.target;
     if (el.id === 'pl-date' || el.dataset.k === 'date') {
