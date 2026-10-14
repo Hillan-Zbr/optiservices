@@ -252,8 +252,9 @@ async function geocodeRdv(r) {
   const g = await OptiGeocode.localise(r, chercherBan, { dansZone: inZone });
   r.geo = !g ? { none: true, v: 2 } : Object.assign(g, { v: 2 }, g.precision === 'commune' ? { none: true, commune: true } : {});
 }
-/* à (re)géocoder : sans position, ou géocodé avant la cascade (les coordonnées Isadom ne sont pas touchées) */
-const aGeocoder = (r) => !r.geo || (!r.geo.src && r.geo.v !== 2);
+/* à (re)géocoder : sans position, géocodé avant la cascade, ou pas localisé précisément (les recherches déjà faites
+   sont en cache : seules les nouvelles variantes partent vers la BAN). Les coordonnées Isadom ne sont pas touchées */
+const aGeocoder = (r) => !r.geo || (!r.geo.src && (r.geo.v !== 2 || !!r.geo.none));
 async function geocodeDepot(d) {
   const cp = (d.adr.match(/\b\d{5}\b/) || [])[0];
   const g = await geocode(d.adr, cp);

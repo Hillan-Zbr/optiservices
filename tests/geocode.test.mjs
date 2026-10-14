@@ -14,6 +14,9 @@ test('nettoie : compléments retirés, abréviations développées', () => {
   assert.equal(G.nettoie('300 ROU DE ST JEAN'), '300 ROUTE DE SAINT JEAN');
   assert.equal(G.nettoie('LD LES GRANGES'), 'LES GRANGES');
   assert.equal(G.nettoie('APPT 12'), '');
+  assert.equal(G.nettoie('CHE des Aubépines Centre de Soins Les Aubépines 3ieme etage'), 'CHEMIN DES AUBEPINES');
+  assert.equal(G.nettoie('2 RUE DU CENTRE'), '2 RUE DU CENTRE');
+  assert.equal(G.nettoie('AVENUE DE LA CLINIQUE CLINIQUE DES PINS'), 'AVENUE DE LA CLINIQUE');
 });
 
 test('raccourcies : retire les derniers mots, garde au moins un mot de la voie', () => {

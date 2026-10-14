@@ -5,7 +5,7 @@
    (« résidence … », « BAT I », « APPART A39 », « BP 1 »…) ou une abréviation (« AVE », « ROU »).
    On tente donc plusieurs recherches, de la plus précise à la plus large :
      1. l'adresse telle quelle ;
-     2. l'adresse nettoyée (compléments retirés, abréviations développées) ;
+     2. l'adresse nettoyée (compléments et nom d'établissement retirés, abréviations développées) ;
      3. l'adresse nettoyée sans ses derniers mots (lieu-dit ou résidence collés à la voie) ;
      4. l'adresse nettoyée sans code postal (code postal erroné) ;
      5. en dernier recours, la commune seule (précision « commune »).
@@ -45,7 +45,12 @@
   const PARASITES = new Set(['RESIDENCE', 'RES', 'RESID', 'RSD', 'BAT', 'BATIMENT', 'APPT', 'APPART', 'APPARTEMENT',
     'APT', 'APP', 'ETAGE', 'ETG', 'ESC', 'ESCALIER', 'PORTE', 'CHEZ', 'BP', 'CS', 'TSA', 'CEDEX', 'LOGEMENT', 'LGT',
     'IMMEUBLE', 'IMM', 'ENTREE', 'PAVILLON']);
+  // nom d'établissement collé derrière la voie (« CHEMIN X INSTITUT DE … ») : coupé seulement s'il suit un mot
+  // de la voie, pour garder « RUE DU CENTRE » ou « AVENUE DE LA CLINIQUE »
+  const ETABLISSEMENTS = new Set(['INSTITUT', 'CENTRE', 'CLINIQUE', 'POLYCLINIQUE', 'HOPITAL', 'EHPAD', 'FOYER', 'MAISON',
+    'CHU', 'CHS', 'CRF', 'SSR', 'USLD', 'ETABLISSEMENT']);
   const SUFFIXES = new Set(['BIS', 'TER', 'QUATER']);
+  const estOrdinal = (t) => /^\d+(E|ER|ERE|EME|IEME|ND|NDE)$/.test(t); // « 2EME », « 2IEME », « 1ER »
   const VIDES = new Set(['LE', 'LA', 'LES', 'L', 'D', 'DE', 'DU', 'DES', 'ET', 'AU', 'AUX', 'EN', 'A', 'SUR', 'SOUS']);
   const LIEU_DIT = new Set(['LD', 'LIEUDIT']);
 
@@ -70,10 +75,11 @@
     let t = mots(adresse).filter((m) => !LIEU_DIT.has(m));
     const d = debutVoie(t);
     if (d > 0) t = t.slice(d); // « RESIDENCE X 12 RUE Y » -> « 12 RUE Y »
-    const p = t.findIndex((m, i) => i > 0 && PARASITES.has(m));
+    const voie = debutVoie(t) === 0;
+    const p = t.findIndex((m, i) => i > 0 && (PARASITES.has(m) || (voie && ETABLISSEMENTS.has(m) && significatifs(t.slice(0, i)).length > 0)));
     if (PARASITES.has(t[0])) t = []; // rien d'exploitable avant le complément
     else if (p > 0) t = t.slice(0, p);
-    while (t.length && (estNumero(t[t.length - 1]) || VIDES.has(t[t.length - 1]) || /^\d+(E|EME|ER)$/.test(t[t.length - 1]))) t.pop();
+    while (t.length && (estNumero(t[t.length - 1]) || VIDES.has(t[t.length - 1]) || estOrdinal(t[t.length - 1]))) t.pop();
     return t.join(' ');
   }
   /* mots qui identifient la voie : ni numéro, ni type de voie, ni article */
@@ -94,7 +100,7 @@
   }
 
   const villeNette = (v) => maj(v).split(' ').map((m) => ABREV[m] || m)
-    .filter((m) => m !== 'CEDEX' && !/^\d+(E|EME|ER)?$/.test(m)).join(' ');
+    .filter((m) => m !== 'CEDEX' && !/^\d+$/.test(m) && !estOrdinal(m)).join(' ');
   /* même commune : noms égaux, l'un préfixe de l'autre (« PLAN D AUPS » / « PLAN D AUPS SAINTE BAUME »), ou mots inclus */
   function villeOk(f, rd) {
     const b = villeNette(rd.ville);
