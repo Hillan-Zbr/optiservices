@@ -9,8 +9,13 @@ import { mountAgenda, renderAgenda, applySelection, applyHover, focusJob } from 
 const app = window.OptiApp;
 const $ = (s) => document.querySelector(s);
 
-/* « Siège · Aubagne (13) » -> « Aubagne » */
-const antenneLabel = (nom) => String(nom || '').split('·').pop().replace(/\(.*?\)/g, '').trim() || String(nom || '');
+/* département d'une antenne : libellé Isadom (« ARARD 2B » -> « 2B »), sinon parenthèse du nom (« Siège · Aubagne (13) » -> « 13 ») */
+const antenneDept = (d) => {
+  const isa = String(d.isadom || '').replace(/^\s*ARARD\s*/i, '').trim();
+  if (isa) return isa;
+  const m = String(d.nom || '').match(/\(([^)]*)\)/);
+  return m ? m[1].trim() : String(d.nom || '');
+};
 
 /* ---------- contexte métier pour le modèle ---------- */
 function buildContext(R) {
@@ -18,7 +23,7 @@ function buildContext(R) {
   const vehicles = R.amds.map((a, i) => {
     const d = app.depotOf(a.depot) || { id: a.depot, nom: a.depot };
     const w = app.vehicleWindow(a); // heures ouvrées propres à chaque AMD (journée, matin, après-midi)
-    return { id: String(i + 1), name: a.nom, antenne: d.id, antenneNom: antenneLabel(d.nom), heuresOuvrees: { debutMin: w[0] / 60, finMin: w[1] / 60 } };
+    return { id: String(i + 1), name: a.nom, antenne: d.id, antenneNom: antenneDept(d), heuresOuvrees: { debutMin: w[0] / 60, finMin: w[1] / 60 } };
   });
   const jobsById = {};
   R.rdv.forEach((rd, j) => { jobsById[String(j + 1)] = jobInfo(rd); });
@@ -158,7 +163,7 @@ function render() {
   }
 
   if (opt.sansSolution) vm.message = 'VROOM n’a construit aucune tournée pour cette journée : aucun RDV n’a pu être affecté. Voir la liste « À placer ».';
-  else if (!pairs.length) vm.message = 'Aucun AMD sur cette antenne.';
+  else if (!pairs.length) vm.message = 'Aucun AMD sur ce département.';
   if (opt.sansSolution) vm.pairs = [];
 
   vm.nonAffectes = current.nonAffectes.map((u) => ({ key: u.key, jobId: u.jobId, titre: titreRdv(u.rd), motif: u.motif }));
