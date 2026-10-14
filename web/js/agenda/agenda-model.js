@@ -5,7 +5,7 @@ import { SEUIL_PROCHE_FIN_CRENEAU_MIN } from './agenda-constants.js';
 
 /** @typedef {{ kind:'trajet'|'retour'|'setup'|'rdv'|'pause'|'attente',
  *             startMin:number, endMin:number,
- *             jobId?:string, patient?:string, ville?:string, intervention?:string, o2?:boolean,
+ *             jobId?:string, patient?:string, ville?:string, intervention?:string, o2?:boolean, groupe?:string,
  *             creneau?:string, arriveeMin?:number, trajetPrecedentMin?:number,
  *             warn?:boolean }} Segment */
 
@@ -31,7 +31,7 @@ export const totalTrajetsMin = (segments) => segments.filter((s) => TRAJETS.has(
  * @param {object} vroomResponse  réponse VROOM brute
  * @param {object} context        { vehicles, jobsById, params }
  *   vehicles : [{ id, name, antenne, antenneNom, heuresOuvrees:{debutMin, finMin} }] — une colonne par véhicule, même sans route
- *   jobsById : { [id]: { patient, ville, intervention, o2, creneau:{debutMin, finMin, label} } }
+ *   jobsById : { [id]: { patient, ville, intervention, o2, groupe, creneau:{debutMin, finMin, label} } }
  *   params   : { seuilProcheFinCreneauMin? }
  * @returns {AgendaDay}
  */
@@ -96,7 +96,7 @@ function buildColumn(v, route, jobsById, seuil) {
       const debutTache = arrival + wait; // début de stationnement : c'est lui que contraint le créneau VROOM
       const finCreneau = j.creneau ? j.creneau.finMin : null;
       push('rdv', t, t + service, {
-        jobId: id, patient: j.patient, ville: j.ville, intervention: j.intervention, o2: !!j.o2,
+        jobId: id, patient: j.patient, ville: j.ville, intervention: j.intervention, o2: !!j.o2, groupe: j.groupe || 'AUTRE',
         creneau: j.creneau ? j.creneau.label : undefined,
         arriveeMin: secToMin(arrival),
         trajetPrecedentMin: trajet ? dureeMin(trajet) : 0,

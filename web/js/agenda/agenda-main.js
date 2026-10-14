@@ -28,7 +28,7 @@ function jobInfo(rd) {
   // fenêtre réelle du RDV (heures Isadom si présentes, sinon créneau paramétré) et types multiples
   const w = app.rdvWindow(rd);
   return {
-    patient: app.patientLib(rd), ville: rd.ville, intervention: app.rdvTypeNom(rd), o2: app.rdvO2(rd),
+    patient: app.patientLib(rd), ville: rd.ville, intervention: app.rdvTypeNom(rd), o2: app.rdvO2(rd), groupe: app.rdvGroupe(rd),
     creneau: { debutMin: w[0] / 60, finMin: w[1] / 60, label: app.rdvWindowLabel(rd) }
   };
 }

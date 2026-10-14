@@ -24,7 +24,7 @@ function h(tag, attrs, ...kids) {
 }
 
 const LEGENDE = [
-  ['rdv', 'RDV standard'], ['rdv o2', 'RDV O2'], ['setup', 'Stationnement'], ['trajet', 'Trajet'],
+  ['g-pni', 'PNI'], ['g-oxy', 'OXY'], ['g-des', 'DES'], ['g-autre', 'Autre type'], ['setup', 'Stationnement'], ['trajet', 'Trajet'],
   ['pause', 'Pause'], ['attente', 'Attente avant créneau'], ['warn', 'Proche de la fin du créneau'],
   ['over', 'Retour après les heures ouvrées'], ['off', 'Hors heures ouvrées']
 ];
@@ -158,7 +158,7 @@ function segEl(s, col, pos, vm) {
     const label = [s.o2 ? 'O2' : null, s.patient, s.ville, heures, s.warn ? 'arrivée proche de la fin du créneau' : null].filter(Boolean).join(', ');
     const compact = parseFloat(style.height) < HAUTEUR_RDV_COMPACT_PX;
     const sel = vm.selectedJobId === s.jobId;
-    return h('button.ag-seg.k-rdv' + (s.o2 ? '.o2' : '') + (s.warn ? '.warn' : '') + (sel ? '.sel' : '') + (compact ? '.compact' : '') + (vm.hoveredJobId === s.jobId ? '.hov' : ''), {
+    return h('button.ag-seg.k-rdv.g-' + String(s.groupe || 'AUTRE').toLowerCase() + (s.warn ? '.warn' : '') + (sel ? '.sel' : '') + (compact ? '.compact' : '') + (vm.hoveredJobId === s.jobId ? '.hov' : ''), {
       type: 'button', style, 'data-job': s.jobId, 'aria-label': label, 'aria-pressed': String(sel),
       onclick: () => handlers.onSelect(vm.selectedJobId === s.jobId ? null : s.jobId),
       onmouseenter: () => handlers.onHover(s.jobId), onmouseleave: () => handlers.onHover(null),
@@ -182,7 +182,7 @@ function segEl(s, col, pos, vm) {
 }
 
 function actEl(s, pos) {
-  return h('div.ag-seg.act.k-' + s.kind + (s.kind === 'rdv' && s.o2 ? '.o2' : ''), { style: pos(s.startMin, s.endMin) });
+  return h('div.ag-seg.act.k-' + s.kind + (s.kind === 'rdv' ? '.g-' + String(s.groupe || 'AUTRE').toLowerCase() : ''), { style: pos(s.startMin, s.endMin) });
 }
 
 /* ---------- panneaux ---------- */

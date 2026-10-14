@@ -51,6 +51,19 @@ const rdvO2 = (rd) => rdvTypes(rd).some((c) => { const t = typeOf(c); return t &
 /* type(s) de visite affiché(s) : « CODE – libellé » (code Isadom sFKTypeVisite + libellé des paramètres) */
 const typeLabel = (c) => { const t = typeOf(c); return t && t.nom && t.nom !== c ? c + ' – ' + t.nom : c; };
 const rdvTypeNom = (rd) => rdvTypes(rd).map(typeLabel).join(' + ');
+/* regroupements des types de visite (14/10/2026) : une couleur par groupe dans l'agenda, les tournées et les stats.
+   Code absent de ces listes -> groupe « autre », affiché en gris. */
+const GROUPES_TYPE = {
+  PNI: ['LP', 'LIN', 'LD'],
+  OXY: ['LIVO2L', 'AJT', 'O2G', 'CLC', 'DEP', 'M', 'MEP'],
+  DES: ['DES', 'RET']
+};
+const groupeType = (c) => { const k = String(c ?? '').trim().toUpperCase(); return Object.keys(GROUPES_TYPE).find((g) => GROUPES_TYPE[g].includes(k)) || 'AUTRE'; };
+// groupe d'un RDV à plusieurs types : celui du premier type
+const rdvGroupe = (rd) => groupeType(rdvTypes(rd)[0]);
+const tvBadge = (c) => `<span class="tv tv-${groupeType(c).toLowerCase()}" title="${esc(typeLabel(c) + ' · ' + (groupeType(c) === 'AUTRE' ? 'autre' : groupeType(c)))}">${esc(c)}</span>`;
+// pastilles colorées + libellés des types d'un RDV
+const rdvTypeHtml = (rd) => rdvTypes(rd).map((c) => { const t = typeOf(c); return tvBadge(c) + (t && t.nom && t.nom !== c ? ' ' + esc(t.nom) : ''); }).join(' + ');
 // libellé patient des tournées, de la carte, de l'agenda et des exports : NOM Prénom (code patient Isadom)
 /* « Visite | Prestation » : TypeVisite et TypePrestation bruts de l'export Isadom, séparés par « | » */
 const rdvVisitePrest = (rd) => (rd.typeVisite || rd.typePrestation ? (rd.typeVisite || '') + '|' + (rd.typePrestation || '') : '');
@@ -248,7 +261,7 @@ function geoBadge(g) {
 /* lignes du tableau des RDV écartés (écran Planification : prévision ; écran Résultat : résultat) */
 function ecartesRows(list) {
   return list.map((rd) => `<tr><td class="mono gras">${esc(frDate(rd.date))}</td><td class="mono gras">${esc(rd.patientCode || '')}</td><td class="mono gras">${esc(rd.idRdv || '')}</td><td><b>${esc(rd.patient)}</b>${rd.antenne ? `<div class="hint">${esc(rd.antenne)}</div>` : ''}</td>
-    <td class="mono">${esc(rd.cp)}</td><td>${esc(rd.ville || '?')}</td><td>${esc(rd.adresse)}</td><td>${esc(rdvTypeNom(rd))}</td>
+    <td class="mono">${esc(rd.cp)}</td><td>${esc(rd.ville || '?')}</td><td>${esc(rd.adresse)}</td><td>${rdvTypeHtml(rd)}</td>
     <td class="mono">${esc(rd.hDeb ? rd.hDeb + '–' + rd.hFin : crenOf(rd.cren).nom)}</td><td>${esc(rd.amdActuel)}</td>
     <td><b style="color:var(--danger)">${esc(rd.motif)}</b>${rd.geo && rd.geo.label ? `<div class="hint">localisé : ${esc(rd.geo.label)}</div>` : ''}</td></tr>`).join('');
 }
@@ -393,7 +406,7 @@ function renderPlan() {
     <td><input data-rdv="${i}" data-k="ville" value="${esc(r.ville)}" aria-label="Ville"></td>
     <td><input data-rdv="${i}" data-k="adresse" value="${esc(r.adresse)}" aria-label="Adresse"></td>
     <td>${r.types && r.types.length > 1
-      ? `<span class="mono" title="${esc(rdvTypeNom(r))}">${esc(r.types.join(' + '))}</span><div class="hint">${rdvDuree(r)} min</div>`
+      ? `<span title="${esc(rdvTypeNom(r))}">${r.types.map(tvBadge).join(' + ')}</span><div class="hint">${rdvDuree(r)} min</div>`
       : `<select data-rdv="${i}" data-k="type" aria-label="Intervention">${types.map((t) => `<option value="${esc(t.code)}" ${t.code === r.type ? 'selected' : ''}>${esc(typeLabel(t.code))}</option>`).join('')}${typeOf(r.type) ? '' : `<option selected value="${esc(r.type)}">${esc(r.type)} (inconnu)</option>`}</select>`}</td>
     <td class="mono">${esc(rdvVisitePrest(r))}</td>
     <td style="width:130px">${isa && r.hDeb
@@ -1127,7 +1140,7 @@ function renderResult() {
       const wait = s.waiting_time > 60 ? ` · attente ${Math.round(s.waiting_time / 60)} min` : '';
       const inf = infoTitle(rd);
       return `<li class="pick" data-job="${s.job}" tabindex="0" title="Voir sur la carte"><span class="n" style="background:${col}">${n}</span><span class="t">${s2hm(s.arrival)}</span>
-        <span><b>${esc(patientLib(rd))}</b> <span class="w">· ${esc(rd.ville)} · ${esc(rdvTypeNom(rd))}${rd.adresse ? ' · ' + esc(rd.adresse) : ''}${wait}</span>${rdvVisitePrest(rd) ? `<div class="hint mono">Visite | Prestation : ${esc(rdvVisitePrest(rd))}</div>` : ''}${rd.infoRdv ? `<div class="hint">Info RDV : ${esc(rd.infoRdv)}</div>` : ''}${inf ? `<details class="infos"><summary>Infos d'accès</summary>${rdvInfos(rd).map(([k, v]) => `<div><span class="hint">${esc(k)}</span> ${esc(v)}</div>`).join('')}</details>` : ''}</span>
+        <span><b>${esc(patientLib(rd))}</b> <span class="w">· ${esc(rd.ville)} · </span>${rdvTypeHtml(rd)}<span class="w">${rd.adresse ? ' · ' + esc(rd.adresse) : ''}${wait}</span>${rdvVisitePrest(rd) ? `<div class="hint mono">Visite | Prestation : ${esc(rdvVisitePrest(rd))}</div>` : ''}${rd.infoRdv ? `<div class="hint">Info RDV : ${esc(rd.infoRdv)}</div>` : ''}${inf ? `<details class="infos"><summary>Infos d'accès</summary>${rdvInfos(rd).map(([k, v]) => `<div><span class="hint">${esc(k)}</span> ${esc(v)}</div>`).join('')}</details>` : ''}</span>
         <span class="badge ${c.badge}" title="${esc(rdvWindowLabel(rd))}">${rd.hDeb ? esc(rd.hDeb + '–' + rd.hFin) : c.nom}</span></li>`;
     }).join('');
     return `<section class="route"><div class="route-h"><div class="who"><span class="dot" style="background:${col}"></span><b>${esc(a.nom)}</b><span>${esc(d.nom)}</span></div>
@@ -1155,14 +1168,14 @@ function openStats() {
   const R = state.results[state.date]; const dlg = $('#dlg-stats');
   if (!R || !window.OptiStats || !dlg) return;
   const S = window.OptiStats.computeStats(R, { typesOf: rdvTypes, motifNonAffecte: motifNonAffecte(R) });
-  const types = (l) => (l.length ? `<div class="st-types">${l.map((t) => `<span title="${esc(typeLabel(t.code))}"><b class="mono">${esc(t.code)}</b> ${t.n}</span>`).join('')}</div>` : '<span class="hint">—</span>');
+  const types = (l) => (l.length ? `<div class="st-types">${l.map((t) => `<span>${tvBadge(t.code)} ${t.n}</span>`).join('')}</div>` : '<span class="hint">—</span>');
   const kpi = (lib, val) => `<div><span>${lib}</span><b class="mono">${val}</b></div>`;
   $('#st-titre').textContent = "Compte rendu de l'import de la journée du " + frDate(S.date);
   $('#st-sub').textContent = `${longDate(S.date)} · optimisée le ${new Date(R.at).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}. Un RDV à plusieurs types de visite est compté dans chacun de ses types.`;
   $('#st-body').innerHTML = `<div class="st-kpis">${kpi('RDV à planifier', S.nRdv)}${kpi('AMD disponibles', S.nAmd)}${kpi('AMD mobilisés', S.nAmdMobilises)}${kpi('RDV planifiés', S.planifies)}${kpi('RDV non planifiés', S.nonPlanifies.total)}${kpi('Kilométrage total', fmtKm(S.distance))}</div>
     <h3>RDV à planifier par type de visite</h3>
     <table class="tbl"><thead><tr><th>Type de visite</th><th class="num">RDV</th></tr></thead><tbody>
-      ${S.parType.map((t) => `<tr><td><b class="mono">${esc(t.code)}</b> ${esc((typeOf(t.code) || {}).nom || '')}</td><td class="num mono">${t.n}</td></tr>`).join('') || '<tr><td colspan="2" class="empty">Aucun RDV.</td></tr>'}
+      ${S.parType.map((t) => `<tr><td>${tvBadge(t.code)} ${esc((typeOf(t.code) || {}).nom || '')}</td><td class="num mono">${t.n}</td></tr>`).join('') || '<tr><td colspan="2" class="empty">Aucun RDV.</td></tr>'}
     </tbody></table>
     <h3>Répartition par AMD</h3>
     <div class="scroll"><table class="tbl"><thead><tr><th>AMD</th><th>Antenne</th><th class="num">RDV</th><th>Types de visite</th><th class="num">Kilométrage</th><th class="num">Conduite</th></tr></thead><tbody>
@@ -1172,7 +1185,7 @@ function openStats() {
     <h3>RDV non planifiés par motif · ${S.nonPlanifies.total}</h3>
     ${S.nonPlanifies.parMotif.map((m) => `<details class="st-motif"><summary><b>${esc(m.motif)}</b> · ${m.n} RDV <span class="hint">(voir le détail)</span></summary>
       <div class="scroll"><table class="tbl"><thead><tr><th>N° RDV</th><th>Code Pat.</th><th>Patient</th><th>CP</th><th>Ville</th><th>Type de visite</th><th>Créneau</th><th>AMD prévu</th><th>Étape</th></tr></thead><tbody>
-        ${m.liste.map(({ rd, etape }) => `<tr><td class="mono gras">${esc(rd.idRdv || '')}</td><td class="mono">${esc(rd.patientCode || '')}</td><td>${esc(rd.patient)}</td><td class="mono">${esc(rd.cp)}</td><td>${esc(rd.ville || '?')}</td><td>${esc(rdvTypeNom(rd))}</td><td class="mono">${esc(rd.hDeb ? rd.hDeb + '–' + rd.hFin : crenOf(rd.cren).nom)}</td><td>${esc(rd.amdActuel)}</td><td class="hint">${esc(etape)}</td></tr>`).join('')}
+        ${m.liste.map(({ rd, etape }) => `<tr><td class="mono gras">${esc(rd.idRdv || '')}</td><td class="mono">${esc(rd.patientCode || '')}</td><td>${esc(rd.patient)}</td><td class="mono">${esc(rd.cp)}</td><td>${esc(rd.ville || '?')}</td><td>${rdvTypeHtml(rd)}</td><td class="mono">${esc(rd.hDeb ? rd.hDeb + '–' + rd.hFin : crenOf(rd.cren).nom)}</td><td>${esc(rd.amdActuel)}</td><td class="hint">${esc(etape)}</td></tr>`).join('')}
       </tbody></table></div></details>`).join('') || '<p class="hint">Tous les RDV de la journée sont planifiés.</p>'}`;
   if (!dlg.open) dlg.showModal();
   J.info('action', "Stats d'optimisation consultées", 'Journée du ' + frDate(S.date), { rdv: S.nRdv, amd: S.nAmd, non_planifies: S.nonPlanifies.total });
@@ -1205,7 +1218,7 @@ function renderUnassigned() {
   $('#t-unassigned').innerHTML = sorted.map(({ rd, job, why }) => {
     const c = crenOf(rd.cren);
     return `<tr${job ? ` class="pick" data-job="${job}" tabindex="0" title="Voir sur la carte"` : ''}><td class="mono">${esc(frDate(rd.date))}</td><td><b>${esc(patientLib(rd))}</b></td><td class="mono">${esc(rd.cp)}</td><td>${esc(rd.ville || '?')}</td><td>${esc(rd.adresse)}</td>
-      <td>${esc(rdvTypeNom(rd))}</td><td><span class="badge ${c.badge}" title="${esc(rdvWindowLabel(rd))}">${rd.hDeb ? esc(rd.hDeb + '–' + rd.hFin) : c.nom}</span></td><td>${esc(rd.amdActuel)}</td><td class="hint">${esc(why)}</td></tr>`;
+      <td>${rdvTypeHtml(rd)}</td><td><span class="badge ${c.badge}" title="${esc(rdvWindowLabel(rd))}">${rd.hDeb ? esc(rd.hDeb + '–' + rd.hFin) : c.nom}</span></td><td>${esc(rd.amdActuel)}</td><td class="hint">${esc(why)}</td></tr>`;
   }).join('');
   if (pickedJob != null) $$(`#t-unassigned .pick[data-job="${pickedJob}"]`).forEach((x) => x.classList.add('sel'));
 }
@@ -1392,7 +1405,7 @@ window.OptiApp = {
   hasResult: (iso) => !!state.results[iso],
   setDate(iso) { if (iso && iso !== state.date) { state.date = iso; save(); alertMsg('#r-msg', ''); renderResult(); } },
   typeOf, depotOf, crenOf, hm2s, longDate, frDate,
-  rdvWindow: (rd) => rdvWindow(rd), rdvWindowLabel: (rd) => rdvWindowLabel(rd), rdvTypeNom, rdvO2, rdvInfos, patientLib, rdvVisitePrest,
+  rdvWindow: (rd) => rdvWindow(rd), rdvWindowLabel: (rd) => rdvWindowLabel(rd), rdvTypeNom, rdvO2, rdvGroupe, rdvInfos, patientLib, rdvVisitePrest,
   vehicleWindow: (a) => vehicleWindow(a, state.params),
   pickedJob: () => pickedJob,
   selectJob, hoverJob,

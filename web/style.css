@@ -4,6 +4,9 @@
   --danger:#b42318; --ok:#1f7a4d; --warn:#8a4b0c; --warn-soft:#fbeedd;
   --f:'IBM Plex Sans',system-ui,-apple-system,'Segoe UI',sans-serif;
   --m:'IBM Plex Mono',ui-monospace,Consolas,monospace;
+  /* regroupements de types de visite */
+  --tv-pni:#7B3FA0; --tv-oxy:#0A6B5C; --tv-des:#B4501A; --tv-autre:#6B7480;
+  --tv-pni-act:#C9B0DA; --tv-oxy-act:#8CC2B9; --tv-des-act:#E5BBA2; --tv-autre-act:#C3C8CE;
 }
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 var(--f)}
@@ -224,3 +227,7 @@ details.infos div{white-space:pre-wrap}
 .st-motif{border:1px solid var(--line);border-radius:8px;margin:8px 0;padding:8px 12px}
 .st-motif summary{cursor:pointer}
 .st-motif .tbl{margin-top:8px}
+
+/* pastille de type de visite, colorée par regroupement */
+.tv{display:inline-block;font:600 12px/1.5 var(--m);color:#fff;border-radius:4px;padding:0 6px;white-space:nowrap;vertical-align:baseline}
+.tv-pni{background:var(--tv-pni)}.tv-oxy{background:var(--tv-oxy)}.tv-des{background:var(--tv-des)}.tv-autre{background:var(--tv-autre)}
