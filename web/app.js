@@ -981,7 +981,17 @@ async function optimize() {
   }
   const day = state.rdv.filter((r) => r.date === state.date && rdvInScope(r));
   if (!day.length) { alertMsg(msg, `Aucun RDV le ${frDate(state.date)} sur les antennes incluses dans le test.`, 'err'); J.warn('optimisation', 'Optimisation impossible', `Aucun RDV le ${frDate(state.date)} sur les antennes incluses dans le test`); return; }
-  const amds = state.amd.filter((a) => amdActif(a) && a.dispo !== 'absent' && depotOf(a.depot) && depotOf(a.depot).actif);
+  // antenne du jour : celle de la majorité des RDV Isadom de l'AMD ce jour-là (un AMD peut renforcer une autre antenne), sinon son point de départ habituel
+  const depotDuJour = (a) => {
+    const cnt = new Map();
+    day.forEach((rd) => { if (amdMatch(rd, a)) { const d = depotOfAntenne(rd.antenne); if (d && d.actif) cnt.set(d.id, (cnt.get(d.id) || 0) + 1); } });
+    let best = a.depot, n = 0;
+    cnt.forEach((v, id) => { if (v > n || (v === n && id === a.depot)) { best = id; n = v; } });
+    return best;
+  };
+  const amds = state.amd.filter((a) => amdActif(a) && a.dispo !== 'absent')
+    .map((a) => { const dj = depotDuJour(a); return dj === a.depot ? a : Object.assign(clone(a), { depot: dj, depotHabituel: a.depot }); })
+    .filter((a) => depotOf(a.depot) && depotOf(a.depot).actif);
   if (!amds.length) { alertMsg(msg, 'Aucun AMD actif et disponible partant d’un point de départ inclus dans le test.', 'err'); J.warn('optimisation', 'Optimisation impossible', `Aucun AMD disponible le ${frDate(state.date)} sur les antennes du test`); return; }
   // RDV affectés dans Isadom à un AMD non prévu (inactif, absent, inconnu, sans AMD) : hors optimisation, signalés dans le compte rendu
   const horsAmd = [];
@@ -1180,9 +1190,10 @@ function renderResult() {
     const vid = i + 1; const col = COLORS[i % COLORS.length];
     const r = res.routes.find((x) => x.vehicle === vid);
     const d = depotOf(a.depot) || { nom: a.depot };
+    const dLib = esc(d.nom) + (a.depotHabituel ? ` <span class="hint">(en renfort, habituellement ${esc((depotOf(a.depotHabituel) || { nom: a.depotHabituel }).nom)})</span>` : '');
     const nNonTenus = nonTenus.filter((rd) => rd.amdIdx === i).length;
     const nonTenusHtml = nNonTenus ? `<span class="over" title="RDV de cet AMD impossibles à placer : voir « RDV non affectés »">⚠ ${nNonTenus} non tenu${nNonTenus > 1 ? 's' : ''}</span>` : '';
-    if (!r) return `<section class="route"><div class="route-h"><div class="who"><span class="dot" style="background:${col}"></span><b>${esc(a.nom)}</b><span>${esc(d.nom)}</span></div><div class="tot mono"><span>0 RDV</span>${nonTenusHtml}</div></div><div class="empty">${nNonTenus ? 'Aucun RDV ne tient dans la journée de cet AMD : voir « RDV non affectés ».' : 'Aucun RDV prévu pour cet AMD.'}</div></section>`;
+    if (!r) return `<section class="route"><div class="route-h"><div class="who"><span class="dot" style="background:${col}"></span><b>${esc(a.nom)}</b><span>${dLib}</span></div><div class="tot mono"><span>0 RDV</span>${nonTenusHtml}</div></div><div class="empty">${nNonTenus ? 'Aucun RDV ne tient dans la journée de cet AMD : voir « RDV non affectés ».' : 'Aucun RDV prévu pour cet AMD.'}</div></section>`;
     const jobsN = r.steps.filter((s) => s.type === 'job').length;
     const kmOver = a.kmmax > 0 && r.distance > a.kmmax * 1000;
     const hOver = a.hmax > 0 && r.duration > a.hmax * 3600;
@@ -1200,7 +1211,7 @@ function renderResult() {
         <span><b>${esc(patientLib(rd))}</b> <span class="w">· ${esc(rd.ville)} · </span>${rdvTypeHtml(rd)}<span class="w">${rd.adresse ? ' · ' + esc(rd.adresse) : ''}${wait}</span>${rdvVisitePrest(rd) ? `<div class="hint mono">Visite | Prestation : ${esc(rdvVisitePrest(rd))}</div>` : ''}${rd.infoRdv ? `<div class="hint">Info RDV : ${esc(rd.infoRdv)}</div>` : ''}${inf ? `<details class="infos"><summary>Infos d'accès</summary>${rdvInfos(rd).map(([k, v]) => `<div><span class="hint">${esc(k)}</span> ${esc(v)}</div>`).join('')}</details>` : ''}</span>
         <span class="badge ${c.badge}" title="${esc(rdvWindowLabel(rd))}">${rd.hDeb ? esc(rd.hDeb + '–' + rd.hFin) : c.nom}</span></li>`;
     }).join('');
-    return `<section class="route"><div class="route-h"><div class="who"><span class="dot" style="background:${col}"></span><b>${esc(a.nom)}</b><span>${esc(d.nom)}</span></div>
+    return `<section class="route"><div class="route-h"><div class="who"><span class="dot" style="background:${col}"></span><b>${esc(a.nom)}</b><span>${dLib}</span></div>
       <div class="tot mono"><span>${jobsN} RDV</span>${nonTenusHtml}<span class="${kmOver ? 'over' : ''}">${fmtKm(r.distance)}${a.kmmax ? ' / ' + a.kmmax + ' km' : ''}</span><span class="${hOver ? 'over' : ''}">${fmtDur(r.duration)}${a.hmax ? ' / ' + a.hmax + ' h' : ''} conduite</span><span>${s2hm(start.arrival)}–${s2hm(end.arrival)}</span><button class="btn2 small" type="button" data-csv-amd="${i}" title="Exporter l'ordre de passage de ${esc(a.nom)} (CSV) pour le comparer à l'existant">CSV</button></div></div>
       <ol class="steps">${li}</ol></section>`;
   }).join('');
