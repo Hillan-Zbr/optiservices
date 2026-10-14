@@ -1144,7 +1144,7 @@ function renderResult() {
         <span class="badge ${c.badge}" title="${esc(rdvWindowLabel(rd))}">${rd.hDeb ? esc(rd.hDeb + '–' + rd.hFin) : c.nom}</span></li>`;
     }).join('');
     return `<section class="route"><div class="route-h"><div class="who"><span class="dot" style="background:${col}"></span><b>${esc(a.nom)}</b><span>${esc(d.nom)}</span></div>
-      <div class="tot mono"><span>${jobsN} RDV</span><span class="${kmOver ? 'over' : ''}">${fmtKm(r.distance)}${a.kmmax ? ' / ' + a.kmmax + ' km' : ''}</span><span class="${hOver ? 'over' : ''}">${fmtDur(r.duration)}${a.hmax ? ' / ' + a.hmax + ' h' : ''} conduite</span><span>${s2hm(start.arrival)}–${s2hm(end.arrival)}</span></div></div>
+      <div class="tot mono"><span>${jobsN} RDV</span><span class="${kmOver ? 'over' : ''}">${fmtKm(r.distance)}${a.kmmax ? ' / ' + a.kmmax + ' km' : ''}</span><span class="${hOver ? 'over' : ''}">${fmtDur(r.duration)}${a.hmax ? ' / ' + a.hmax + ' h' : ''} conduite</span><span>${s2hm(start.arrival)}–${s2hm(end.arrival)}</span><button class="btn2 small" type="button" data-csv-amd="${i}" title="Exporter l'ordre de passage de ${esc(a.nom)} (CSV) pour le comparer à l'existant">CSV</button></div></div>
       <ol class="steps">${li}</ol></section>`;
   }).join('');
 
@@ -1336,6 +1336,24 @@ function exportCsv() {
   download(`tournees_${R.date}.csv`, '﻿' + lines.join('\r\n'), 'text/csv;charset=utf-8');
   J.info('action', 'Export des tournées', `tournees_${R.date}.csv · ${lines.length - 1} ligne${lines.length > 2 ? 's' : ''}`);
 }
+
+/* export de la tournée d'un seul AMD : ordre de passage, code et nom des patients, pour comparer à l'existant */
+function exportCsvAmd(i) {
+  const R = state.results[state.date]; const a = R && R.amds[i]; if (!a) return;
+  const r = R.res.routes.find((x) => x.vehicle === i + 1); if (!r) return;
+  const q = (v) => '"' + String(v ?? '').replace(/"/g, '""') + '"';
+  const lines = [['date', 'amd', 'ordre', 'heure_arrivee', 'code_patient', 'patient', 'id_rdv'].join(';')];
+  r.steps.filter((s) => s.type === 'job').forEach((s, n) => {
+    const rd = R.rdv[s.job - 1];
+    lines.push([frDate(R.date), a.nom, n + 1, s2hm(s.arrival), rd.patientCode || '', rd.patient, rd.idRdv || ''].map(q).join(';'));
+  });
+  const nom = `tournee_${R.date}_${String(a.nom).normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Za-z0-9]+/g, '_').replace(/^_|_$/g, '')}.csv`;
+  download(nom, '﻿' + lines.join('\r\n'), 'text/csv;charset=utf-8');
+  J.info('action', "Export de la tournée d'un AMD", `${nom} · ${lines.length - 1} RDV`);
+}
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('#r-routes [data-csv-amd]'); if (b) exportCsvAmd(Number(b.dataset.csvAmd));
+});
 
 /* ---------- test trajet ---------- */
 let trajetReady = false;
