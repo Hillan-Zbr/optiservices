@@ -106,9 +106,9 @@ test('trajet placé avant une pause de fin de journée = retour', () => {
   assert.equal(col.trajetTotalMin, 40);
 });
 
-test('bornes : heures ouvrées ± 1 h, étendues aux segments qui dépassent', () => {
+test('bornes : heures ouvrées sans marge avant, + 1 h après, étendues aux segments qui dépassent', () => {
   const day = buildAgendaDay(reelle, ctx);
-  assert.deepEqual(day.bornes, { debutMin: 420, finMin: 1140 });
+  assert.deepEqual(day.bornes, { debutMin: 480, finMin: 1140 });
   const tard = buildAgendaDay(synth, { vehicles: [{ ...ctxSynth.vehicles[0], heuresOuvrees: ho(8, 9) }], jobsById: ctxSynth.jobsById });
   assert.equal(tard.bornes.finMin, 12 * 60); // retour 11h45 -> axe jusqu'à 12h
 });

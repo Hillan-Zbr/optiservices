@@ -129,13 +129,13 @@ function buildColumn(v, route, jobsById, seuil) {
   return col;
 }
 
-/* Axe vertical : heures ouvrées arrondies à l'heure, ± 1 h, étendues à tout segment qui en sortirait */
+/* Axe vertical : heures ouvrées arrondies à l'heure (+ 1 h après la fin, rien avant le début), étendues à tout segment qui en sortirait */
 export function computeBornes(colonnes) {
   const cols = colonnes || [];
-  if (!cols.length) return { debutMin: 7 * 60, finMin: 19 * 60 };
+  if (!cols.length) return { debutMin: 8 * 60, finMin: 19 * 60 };
   let deb = Math.min(...cols.map((c) => c.heuresOuvrees.debutMin));
   let fin = Math.max(...cols.map((c) => c.heuresOuvrees.finMin));
-  let debutMin = Math.floor(deb / 60) * 60 - 60;
+  let debutMin = Math.floor(deb / 60) * 60;
   let finMin = Math.ceil(fin / 60) * 60 + 60;
   for (const c of cols) {
     const pts = [c.startMin, c.endMin].concat(...c.segments.map((s) => [s.startMin, s.endMin]));

@@ -119,7 +119,7 @@ function render() {
   const jours = app.days().map((iso) => ({ iso, label: app.longDate(iso) + (app.hasResult(iso) ? '' : ' · non optimisée') }));
   const vm = {
     jours, jour: app.date(), antennes: [], antenne: 'all', mode: 'opt', cmpDisponible: false, cmpTitre: '',
-    pairs: [], bornes: { debutMin: 420, finMin: 1140 }, summary: '', nonAffectes: [],
+    pairs: [], bornes: { debutMin: 480, finMin: 1140 }, summary: '', nonAffectes: [],
     selectedJobId: st.selectedJobId, hoveredJobId: st.hoveredJobId, detail: null
   };
   if (!current) {
