@@ -1478,16 +1478,16 @@ function download(name, content, type) {
 function exportCsv() {
   const R = resultatDuJour(); if (!R) return;
   const q = (v) => '"' + String(v ?? '').replace(/"/g, '""') + '"';
-  const lines = [['date', 'amd', 'ordre', 'heure_arrivee', 'id_rdv', 'patient', 'code_postal', 'ville', 'adresse', 'intervention', 'creneau', 'attente_min', 'infos_acces'].join(';')];
+  const lines = [['date', 'amd', 'ordre', 'heure_arrivee', 'id_rdv', 'patient', 'code_postal', 'ville', 'adresse', 'intervention', 'type_visite', 'prestation', 'creneau', 'attente_min', 'infos_acces'].join(';')];
   R.amds.forEach((a, i) => {
     const r = R.res.routes.find((x) => x.vehicle === i + 1); if (!r) return; let n = 0;
     r.steps.filter((s) => s.type === 'job').forEach((s) => {
       n++; const rd = R.rdv[s.job - 1];
-      lines.push([frDate(R.date), a.nom, n, s2hm(s.arrival), rd.idRdv || '', patientLib(rd), rd.cp, rd.ville, rd.adresse, rdvTypeNom(rd), rdvWindowLabel(rd), Math.round((s.waiting_time || 0) / 60), infoTitle(rd).replace(/\n/g, ' | ')].map(q).join(';'));
+      lines.push([frDate(R.date), a.nom, n, s2hm(s.arrival), rd.idRdv || '', patientLib(rd), rd.cp, rd.ville, rd.adresse, rdvTypeNom(rd), rd.typeVisite || '', rd.typePrestation || '', rdvWindowLabel(rd), Math.round((s.waiting_time || 0) / 60), infoTitle(rd).replace(/\n/g, ' | ')].map(q).join(';'));
     });
   });
-  (R.excluded || []).forEach((rd) => { lines.push([frDate(R.date), 'ÉCARTÉ : ' + (rd.motif || 'adresse introuvable'), '', '', rd.idRdv || '', patientLib(rd), rd.cp, rd.ville, rd.adresse, rdvTypeNom(rd), rdvWindowLabel(rd), '', infoTitle(rd).replace(/\n/g, ' | ')].map(q).join(';')); });
-  R.res.unassigned.forEach((u) => { const rd = R.rdv[u.id - 1]; lines.push([frDate(R.date), 'NON AFFECTÉ', '', '', rd.idRdv || '', patientLib(rd), rd.cp, rd.ville, rd.adresse, rdvTypeNom(rd), rdvWindowLabel(rd), '', infoTitle(rd).replace(/\n/g, ' | ')].map(q).join(';')); });
+  (R.excluded || []).forEach((rd) => { lines.push([frDate(R.date), 'ÉCARTÉ : ' + (rd.motif || 'adresse introuvable'), '', '', rd.idRdv || '', patientLib(rd), rd.cp, rd.ville, rd.adresse, rdvTypeNom(rd), rd.typeVisite || '', rd.typePrestation || '', rdvWindowLabel(rd), '', infoTitle(rd).replace(/\n/g, ' | ')].map(q).join(';')); });
+  R.res.unassigned.forEach((u) => { const rd = R.rdv[u.id - 1]; lines.push([frDate(R.date), 'NON AFFECTÉ', '', '', rd.idRdv || '', patientLib(rd), rd.cp, rd.ville, rd.adresse, rdvTypeNom(rd), rd.typeVisite || '', rd.typePrestation || '', rdvWindowLabel(rd), '', infoTitle(rd).replace(/\n/g, ' | ')].map(q).join(';')); });
   download(`tournees_${R.date}.csv`, '﻿' + lines.join('\r\n'), 'text/csv;charset=utf-8');
   J.info('action', 'Export des tournées', `tournees_${R.date}.csv · ${lines.length - 1} ligne${lines.length > 2 ? 's' : ''}`);
 }
@@ -1497,10 +1497,10 @@ function exportCsvAmd(i) {
   const R = resultatDuJour(); const a = R && R.amds[i]; if (!a) return;
   const r = R.res.routes.find((x) => x.vehicle === i + 1); if (!r) return;
   const q = (v) => '"' + String(v ?? '').replace(/"/g, '""') + '"';
-  const lines = [['date', 'amd', 'ordre', 'heure_arrivee', 'code_patient', 'patient', 'id_rdv'].join(';')];
+  const lines = [['date', 'amd', 'ordre', 'heure_arrivee', 'code_patient', 'patient', 'id_rdv', 'type_visite', 'prestation'].join(';')];
   r.steps.filter((s) => s.type === 'job').forEach((s, n) => {
     const rd = R.rdv[s.job - 1];
-    lines.push([frDate(R.date), a.nom, n + 1, s2hm(s.arrival), rd.patientCode || '', rd.patient, rd.idRdv || ''].map(q).join(';'));
+    lines.push([frDate(R.date), a.nom, n + 1, s2hm(s.arrival), rd.patientCode || '', rd.patient, rd.idRdv || '', rd.typeVisite || '', rd.typePrestation || ''].map(q).join(';'));
   });
   const nom = `tournee_${R.date}_${String(a.nom).normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Za-z0-9]+/g, '_').replace(/^_|_$/g, '')}.csv`;
   download(nom, '﻿' + lines.join('\r\n'), 'text/csv;charset=utf-8');
