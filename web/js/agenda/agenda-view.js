@@ -186,7 +186,7 @@ function renderPlacer(vm) {
   refs.unCount.textContent = n ? n + ' non affecté' + (n > 1 ? 's' : '') : '';
   refs.unEmpty.hidden = n > 0 || !vm.pairs.length;
   refs.unList.replaceChildren(...vm.nonAffectes.map((u) => {
-    const inner = [h('span.ag-untitre', {}, u.titre), h('span.ag-unmotif', {}, 'Motif probable : ' + u.motif)];
+    const inner = [h('span.ag-untitre', {}, u.titre), h('span.ag-unamd', {}, 'AMD : ' + u.amd), h('span.ag-unmotif', {}, 'Motif probable : ' + u.motif)];
     return h('li', {}, u.jobId
       ? h('button.ag-unitem' + (vm.selectedJobId === u.jobId ? '.sel' : ''), { type: 'button', 'data-job': u.jobId, 'aria-pressed': String(vm.selectedJobId === u.jobId), onclick: () => handlers.onSelect(vm.selectedJobId === u.jobId ? null : u.jobId) }, inner)
       : h('div.ag-unitem', {}, inner));

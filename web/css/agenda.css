@@ -143,6 +143,7 @@ button.ag-unitem:hover{background:#F6F9FC}
 .ag-unitem.sel{border-color:var(--ag-txt);box-shadow:inset 0 0 0 1px var(--ag-txt)}
 .ag-unitem:focus-visible{outline:3px solid var(--ag-txt);outline-offset:2px}
 .ag-untitre{font-size:14px;font-weight:600}
+.ag-unamd{font-size:13px;font-weight:600;color:var(--ag-txt2)}
 .ag-unmotif{font-size:13px;color:var(--ag-txt3)}
 
 /* survol d'un RDV de l'agenda : repère correspondant sur la carte */

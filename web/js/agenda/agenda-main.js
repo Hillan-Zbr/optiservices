@@ -168,7 +168,7 @@ function render() {
   else if (!pairs.length) vm.message = 'Aucun AMD sur cette antenne.';
   if (opt.sansSolution) vm.pairs = [];
 
-  vm.nonAffectes = current.nonAffectes.map((u) => ({ key: u.key, jobId: u.jobId, titre: titreRdv(u.rd), motif: u.motif }));
+  vm.nonAffectes = current.nonAffectes.map((u) => ({ key: u.key, jobId: u.jobId, titre: titreRdv(u.rd), amd: String(u.rd.amdActuel || '').trim() || 'non renseigné', motif: u.motif }));
   vm.detail = detailFor(st.selectedJobId);
   renderAgenda(vm);
 }
