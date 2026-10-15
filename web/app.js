@@ -1,4 +1,4 @@
-/* Opriservices — banc de test des tournées AMD (VROOM + OSRM)
+/* Optiservices — banc de test des tournées AMD (VROOM + OSRM)
    Application statique : les appels passent par le proxy nginx
    /vroom/ -> VROOM, /osrm/ -> OSRM, /geocode/ -> Géoplateforme IGN (BAN). */
 'use strict';
