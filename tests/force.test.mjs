@@ -6,10 +6,10 @@ import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 const F = require('../web/js/optim/force-core.js');
 
-test('paliers : réduction par 10 % jusqu’au minimum, puis limites, fin de journée, créneaux', () => {
+test('paliers : réduction par 10 % jusqu’au minimum, puis limites, fin de journée, créneaux, horaires levés', () => {
   const p = F.paliers(50);
-  assert.deepEqual(p.map((x) => x.coef), [100, 90, 80, 70, 60, 50, 50, 50, 50]);
-  assert.deepEqual(p.slice(-4).map((x) => [x.limites, x.fin, x.creneau]), [[false, false, false], [true, false, false], [true, true, false], [true, true, true]]);
+  assert.deepEqual(p.map((x) => x.coef), [100, 90, 80, 70, 60, 50, 50, 50, 50, 50]);
+  assert.deepEqual(p.slice(-5).map((x) => [x.limites, x.fin, x.creneau, x.libre]), [[false, false, false, false], [true, false, false, false], [true, true, false, false], [true, true, true, false], [true, true, true, true]]);
   assert.deepEqual(F.paliers(65).map((x) => x.coef).slice(0, 5), [100, 90, 80, 70, 65]);
   assert.equal(F.paliers('abc')[5].coef, F.MIN_DEFAUT);
 });
@@ -18,6 +18,7 @@ test('libellé : vide au réglage normal, détaillé sinon', () => {
   assert.equal(F.libelle(F.NORMAL), '');
   assert.equal(F.estForce(F.NORMAL), false);
   assert.equal(F.libelle({ coef: 70, limites: true, fin: false, creneau: false }), 'temps sur place réduit à 70 % · heures et km max levés');
+  assert.equal(F.libelle({ coef: 50, limites: true, fin: true, creneau: true, libre: true }), 'temps sur place réduit à 50 % · heures et km max levés · fin de journée repoussée · horaires levés : RDV placés hors créneau si besoin');
 });
 
 /* solveur factice : l'AMD i tient ses RDV quand son temps sur place descend à seuil[i] % */
@@ -43,11 +44,11 @@ test('seul l’AMD saturé est desserré, et juste ce qu’il faut', async () =>
   assert.deepEqual(s.vus.map((v) => v[0]), [100, 100, 100, 100]);
 });
 
-test('au-delà du minimum : limites, fin de journée puis créneaux, et arrêt au dernier palier', async () => {
+test('au-delà du minimum : limites, fin de journée, créneaux puis horaires levés, et arrêt au dernier palier', async () => {
   const resoudre = async () => ({ unassigned: [{ id: 1 }] }); // jamais plaçable
   const r = await F.forcer(resoudre, () => 0, 1, 50);
   assert.equal(r.appels, F.paliers(50).length);
-  assert.deepEqual(r.reglages[0], { coef: 50, limites: true, fin: true, creneau: true });
+  assert.deepEqual(r.reglages[0], { coef: 50, limites: true, fin: true, creneau: true, libre: true });
   assert.equal(r.res.unassigned.length, 1);
 });
 

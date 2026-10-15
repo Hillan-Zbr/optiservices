@@ -1066,7 +1066,9 @@ async function optimize() {
     alertMsg(msg, 'Calcul des tournées…');
     const sf = 1 / (1 + (Number(p.coef) || 0) / 100);
     // placement forcé (OptiForce) : reglages[i] desserre l'AMD n° i (temps sur place, limites, fin de journée, créneaux)
-    const fenetreAmd = (a, rg) => { const w = vehicleWindow(a, p); return rg.fin ? [w[0], Math.max(w[1], OptiForce.FIN_REPOUSSEE)] : w; };
+    // dernier recours (rg.libre) : journée ouverte sur 48 h, plus de pause ni de créneau -> VROOM place tous les RDV de l'AMD
+    const FIN_LIBRE = 48 * 3600;
+    const fenetreAmd = (a, rg) => { const w = vehicleWindow(a, p); return rg.libre ? [w[0], FIN_LIBRE] : rg.fin ? [w[0], Math.max(w[1], OptiForce.FIN_REPOUSSEE)] : w; };
     const buildVehicles = (reglages) => amds.map((a, i) => {
       const d = depotOf(a.depot); const loc = [d.geo.lon, d.geo.lat]; const rg = reglages[i];
       const v = {
@@ -1076,7 +1078,7 @@ async function optimize() {
       };
       if (a.hmax > 0 && !rg.limites) v.max_travel_time = Math.round(a.hmax * 3600);
       if (a.kmmax > 0 && !rg.limites) v.max_distance = Math.round(a.kmmax * 1000);
-      if (a.dispo === 'journee' && p.pauseDuree > 0) {
+      if (a.dispo === 'journee' && p.pauseDuree > 0 && !rg.libre) {
         v.breaks = [{ id: i + 1, description: 'Pause', time_windows: [[hm2s(p.pauseDeb), Math.max(hm2s(p.pauseDeb), hm2s(p.pauseFin) - p.pauseDuree * 60)]], service: p.pauseDuree * 60 }];
       }
       return v;
@@ -1084,11 +1086,13 @@ async function optimize() {
     // le temps sur place (service) est réduit, jamais le stationnement ni les déplacements
     const buildJobs = (reglages) => jobsR.map((r, j) => {
       const { idx } = amdDuRdv(r, amds); const rg = idx >= 0 ? reglages[idx] : OptiForce.NORMAL;
-      return {
+      const job = {
         id: j + 1, description: r.patient, location: [r.geo.lon, r.geo.lat],
         setup: p.stationnement * 60, service: Math.round(rdvDuree(r, p) * 60 * rg.coef / 100),
         time_windows: [rg.creneau ? fenetreAmd(amds[idx], rg) : rdvWindow(r, p)], skills: [idx >= 0 ? 100 + idx : SKILL_SANS_AMD]
       };
+      if (rg.libre) delete job.time_windows;
+      return job;
     });
     // RDV d'un même patient chez le même AMD à la même adresse : un seul job VROOM, pour qu'ils se suivent
     const cleGroupe = (r) => { const pat = String(r.patientCode || r.patient || '').trim().toUpperCase(); return pat ? amdDuRdv(r, amds).idx + '|' + pat : ''; };
