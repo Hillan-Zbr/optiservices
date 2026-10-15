@@ -92,7 +92,7 @@ function compute() {
     const rd = R.rdv[Number(u.jobId) - 1];
     return { key: 'j' + u.jobId, jobId: u.jobId, rd, motif: motif(rd, Number(u.jobId)) };
   }).concat((R.excluded || []).map((rd, i) => ({ key: 'x' + i, rd, motif: rd.motif || MOTIFS.adresse })))
-    // RDV d'un AMD non prévu (absent, inactif, inconnu, antenne hors test) : retirés du calcul, mais à montrer
+    // RDV d'un AMD connu mais non prévu (absent, inactif, antenne hors test) : retirés du calcul, mais à montrer ; ceux d'un AMD inconnu sont déjà filtrés par app.result()
     .concat((R.horsAmd || []).map((rd, i) => ({ key: 'h' + i, rd, motif: `AMD non prévu (${rd.amdActuel || 'aucun'}) : ${rd.motifAmd || 'hors optimisation'}` })));
   current = { R, opt, act, nonAffectes };
 }

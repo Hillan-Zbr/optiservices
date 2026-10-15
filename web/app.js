@@ -203,6 +203,11 @@ const rdvInScope = (rd) => { if (!rd.antenne) return true; const d = depotOfAnte
    Un RDV sans AMD ou affecté à un AMD inconnu est ignoré partout (calcul, RDV écartés, agenda, stats). */
 const rdvAmdConnu = (rd) => state.amd.some((a) => amdMatch(rd, a));
 const rdvPris = (rd) => rdvInScope(rd) && rdvAmdConnu(rd);
+/* résultat de la journée affichée, sans les RDV d'un AMD inconnu (journées optimisées avant le 15/10/2026 comprises) */
+function resultatDuJour() {
+  const R = state.results[state.date]; if (!R) return null;
+  return Object.assign({}, R, { excluded: (R.excluded || []).filter(rdvAmdConnu), horsAmd: (R.horsAmd || []).filter(rdvAmdConnu) });
+}
 
 /* ---------- navigation ---------- */
 const VIEWS = ['parametres', 'parametres-rdv', 'trajet', 'planification', 'resultat'];
@@ -1164,7 +1169,7 @@ function clearResult() {
 function renderResult() {
   if (!state.date) state.date = nextWorkday();
   renderDayNav();
-  const R = state.results[state.date];
+  const R = resultatDuJour();
   const box = $('#r-routes');
   $('#r-opt-zone').hidden = !!R;
   $('#r-csv').disabled = $('#r-print').disabled = $('#r-stats').disabled = !R;
@@ -1293,7 +1298,7 @@ const motifNonAffecte = (R) => (rd) => {
 /* ---------- stats d'optimisation : compte rendu de la journée affichée ---------- */
 let statsCour = null; // { R, S } du compte rendu ouvert, pour l'export CSV
 function openStats() {
-  const R = state.results[state.date]; const dlg = $('#dlg-stats');
+  const R = resultatDuJour(); const dlg = $('#dlg-stats');
   if (!R || !window.OptiStats || !dlg) return;
   const S = window.OptiStats.computeStats(R, { typesOf: rdvTypes, motifNonAffecte: motifNonAffecte(R), amdIdxOf: (rd) => (Number.isInteger(rd.amdIdx) ? rd.amdIdx : amdDuRdv(rd, R.amds).idx) });
   const types = (l) => (l.length ? `<div class="st-types">${l.map((t) => `<span>${tvBadge(t.code)} ${t.n}</span>`).join('')}</div>` : '<span class="hint">—</span>');
@@ -1354,7 +1359,7 @@ function renderUnassigned() {
   const rows = unRows || [];
   $('#c-unassigned').textContent = unRows ? '· ' + rows.length : '';
   $('#r-un-empty').hidden = rows.length > 0;
-  const R0 = state.results[state.date]; const nEx = R0 && R0.excluded ? R0.excluded.length : 0;
+  const R0 = resultatDuJour(); const nEx = R0 && R0.excluded ? R0.excluded.length : 0;
   $('#r-un-empty').textContent = !unRows ? 'Rien à afficher.' : nEx ? 'Tous les RDV calculés sont planifiés (voir les RDV écartés en haut de page).' : 'Tous les RDV de la journée sont planifiés.';
   $('#r-un-wrap').hidden = !rows.length;
   $$('#r-unassigned [data-sort]').forEach((b) => {
@@ -1473,7 +1478,7 @@ function download(name, content, type) {
   setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 500);
 }
 function exportCsv() {
-  const R = state.results[state.date]; if (!R) return;
+  const R = resultatDuJour(); if (!R) return;
   const q = (v) => '"' + String(v ?? '').replace(/"/g, '""') + '"';
   const lines = [['date', 'amd', 'ordre', 'heure_arrivee', 'id_rdv', 'patient', 'code_postal', 'ville', 'adresse', 'intervention', 'creneau', 'attente_min', 'infos_acces'].join(';')];
   R.amds.forEach((a, i) => {
@@ -1491,7 +1496,7 @@ function exportCsv() {
 
 /* export de la tournée d'un seul AMD : ordre de passage, code et nom des patients, pour comparer à l'existant */
 function exportCsvAmd(i) {
-  const R = state.results[state.date]; const a = R && R.amds[i]; if (!a) return;
+  const R = resultatDuJour(); const a = R && R.amds[i]; if (!a) return;
   const r = R.res.routes.find((x) => x.vehicle === i + 1); if (!r) return;
   const q = (v) => '"' + String(v ?? '').replace(/"/g, '""') + '"';
   const lines = [['date', 'amd', 'ordre', 'heure_arrivee', 'code_patient', 'patient', 'id_rdv'].join(';')];
@@ -1571,7 +1576,7 @@ window.OptiApp = {
   get params() { return state.params; },
   date: () => state.date,
   days: resultDays,
-  result: () => state.results[state.date] || null,
+  result: resultatDuJour,
   hasResult: (iso) => !!state.results[iso],
   setDate(iso) { if (iso && iso !== state.date) { state.date = iso; save(); alertMsg('#r-msg', ''); renderResult(); } },
   typeOf, depotOf, crenOf, hm2s, longDate, frDate,
