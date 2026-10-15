@@ -1227,24 +1227,22 @@ function renderResult() {
     const jobsN = r.steps.filter((s) => s.type === 'job').length;
     const kmOver = a.kmmax > 0 && r.distance > a.kmmax * 1000;
     const hOver = a.hmax > 0 && r.duration > a.hmax * 3600;
-    const start = r.steps[0], end = r.steps[r.steps.length - 1];
-    let n = 0;
+        let n = 0;
     const li = r.steps.map((s) => {
-      if (s.type === 'start') return `<li class="aux"><span class="n">⌂</span><span class="t">${s2hm(s.arrival)}</span><span>Départ ${esc(d.nom)}</span><span></span></li>`;
-      if (s.type === 'end') return `<li class="aux"><span class="n">⌂</span><span class="t">${s2hm(s.arrival)}</span><span>Retour ${esc(d.nom)}</span><span></span></li>`;
-      if (s.type === 'break') return `<li class="aux"><span class="n">‖</span><span class="t">${s2hm(s.arrival + (s.waiting_time || 0))}</span><span>Pause déjeuner · ${Math.round(s.service / 60)} min</span><span></span></li>`;
+      if (s.type === 'start') return `<li class="aux"><span class="n">⌂</span><span>Départ ${esc(d.nom)}</span><span></span></li>`;
+      if (s.type === 'end') return `<li class="aux"><span class="n">⌂</span><span>Retour ${esc(d.nom)}</span><span></span></li>`;
+      if (s.type === 'break') return `<li class="aux"><span class="n">‖</span><span>Pause déjeuner · ${Math.round(s.service / 60)} min</span><span></span></li>`;
       if (s.type !== 'job') return '';
       n++; const rd = R.rdv[s.job - 1]; const c = crenOf(rd.cren);
-      const wait = s.waiting_time > 60 ? ` · attente ${Math.round(s.waiting_time / 60)} min` : '';
       // créneau élargi par le placement forcé : la visite peut commencer après la fin du créneau Isadom
       const horsCren = s.arrival + (s.waiting_time || 0) > rdvWindow(rd)[1] ? ' <span class="over">⚠ hors créneau</span>' : '';
       const inf = infoTitle(rd);
-      return `<li class="pick" data-job="${s.job}" tabindex="0" title="Voir sur la carte"><span class="n" style="background:${col}">${n}</span><span class="t">${s2hm(s.arrival)}</span>
-        <span><b>${esc(patientLib(rd))}</b>${horsCren} <span class="w">· ${esc(rd.ville)} · </span>${rdvTypeHtml(rd)}<span class="w">${rd.adresse ? ' · ' + esc(rd.adresse) : ''}${wait}</span>${rdvVisitePrest(rd) ? `<div class="hint mono">Visite | Prestation : ${esc(rdvVisitePrest(rd))}</div>` : ''}${rd.infoRdv ? `<div class="hint">Info RDV : ${esc(rd.infoRdv)}</div>` : ''}${inf ? `<details class="infos"><summary>Infos d'accès</summary>${rdvInfos(rd).map(([k, v]) => `<div><span class="hint">${esc(k)}</span> ${esc(v)}</div>`).join('')}</details>` : ''}</span>
+      return `<li class="pick" data-job="${s.job}" tabindex="0" title="Voir sur la carte"><span class="n" style="background:${col}">${n}</span>
+        <span><b>${esc(patientLib(rd))}</b>${horsCren} <span class="w">· ${esc(rd.ville)} · </span>${rdvTypeHtml(rd)}<span class="w">${rd.adresse ? ' · ' + esc(rd.adresse) : ''}</span>${rdvVisitePrest(rd) ? `<div class="hint mono">Visite | Prestation : ${esc(rdvVisitePrest(rd))}</div>` : ''}${rd.infoRdv ? `<div class="hint">Info RDV : ${esc(rd.infoRdv)}</div>` : ''}${inf ? `<details class="infos"><summary>Infos d'accès</summary>${rdvInfos(rd).map(([k, v]) => `<div><span class="hint">${esc(k)}</span> ${esc(v)}</div>`).join('')}</details>` : ''}</span>
         <span class="badge ${c.badge}" title="${esc(rdvWindowLabel(rd))}">${rd.hDeb ? esc(rd.hDeb + '–' + rd.hFin) : c.nom}</span></li>`;
     }).join('');
     return `<section class="route"><div class="route-h"><div class="who"><span class="dot" style="background:${col}"></span><b>${esc(a.nom)}</b><span>${dLib}</span></div>
-      <div class="tot mono"><span>${jobsN} RDV</span>${nonTenusHtml}${forceHtml}<span class="${kmOver ? 'over' : ''}">${fmtKm(r.distance)}${a.kmmax ? ' / ' + a.kmmax + ' km' : ''}</span><span class="${hOver ? 'over' : ''}">${fmtDur(r.duration)}${a.hmax ? ' / ' + a.hmax + ' h' : ''} conduite</span><span>${s2hm(start.arrival)}–${s2hm(end.arrival)}</span><button class="btn2 small" type="button" data-csv-amd="${i}" title="Exporter l'ordre de passage de ${esc(a.nom)} (CSV) pour le comparer à l'existant">CSV</button></div></div>
+      <div class="tot mono"><span>${jobsN} RDV</span>${nonTenusHtml}${forceHtml}<span class="${kmOver ? 'over' : ''}">${fmtKm(r.distance)}${a.kmmax ? ' / ' + a.kmmax + ' km' : ''}</span><span class="${hOver ? 'over' : ''}">${fmtDur(r.duration)}${a.hmax ? ' / ' + a.hmax + ' h' : ''} conduite</span><button class="btn2 small" type="button" data-csv-amd="${i}" title="Exporter l'ordre de passage de ${esc(a.nom)} (CSV) pour le comparer à l'existant">CSV</button></div></div>
       <ol class="steps">${li}</ol></section>`;
   }).join('');
 
@@ -1403,7 +1401,7 @@ function drawResultMap(R) {
       if (s.type === 'job') {
         n++; const rd = R.rdv[s.job - 1];
         markersR[s.job] = L.marker([s.location[1], s.location[0]], { icon: pinIcon(n, col) })
-          .bindTooltip(`<b>${esc(patientLib(rd))}</b> · ${esc(rd.ville)}<br>${esc(a.nom)} · n° ${n} · ${s2hm(s.arrival)}${tipRdv(rd)}`)
+          .bindTooltip(`<b>${esc(patientLib(rd))}</b> · ${esc(rd.ville)}<br>${esc(a.nom)} · n° ${n}${tipRdv(rd)}`)
           .on('click', () => pickJob(s.job, true)).addTo(layerR);
         jobVehR[s.job] = r.vehicle;
       }

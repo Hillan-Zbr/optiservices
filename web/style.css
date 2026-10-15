@@ -147,7 +147,7 @@ body[data-view=resultat] #map-result{height:calc(100vh - 32px);max-height:900px}
 .route-h .tot{display:flex;gap:16px;font-size:13px;color:var(--label);flex-wrap:wrap}
 .over{color:var(--danger);font-weight:600}
 .steps{list-style:none;margin:0;padding:0}
-.steps li{display:grid;grid-template-columns:32px 58px minmax(0,1fr) auto;gap:12px;align-items:center;padding:9px 18px;border-bottom:1px solid var(--line2)}
+.steps li{display:grid;grid-template-columns:32px minmax(0,1fr) auto;gap:12px;align-items:center;padding:9px 18px;border-bottom:1px solid var(--line2)}
 .steps li:last-child{border-bottom:0}
 .steps .n{width:28px;height:28px;border-radius:50%;color:#fff;display:grid;place-items:center;font:13px var(--m)}
 .steps .t{font:14px var(--m);color:var(--label)}
@@ -169,8 +169,8 @@ details.infos div{white-space:pre-wrap}
 
 @media (max-width:600px){
   .wrap{padding-inline:16px}
-  .steps li{grid-template-columns:28px 52px minmax(0,1fr);}
-  .steps li .badge{grid-column:3}
+  .steps li{grid-template-columns:28px minmax(0,1fr);}
+  .steps li .badge{grid-column:2}
 }
 @media print{
   body{background:#fff;font-size:12pt}
