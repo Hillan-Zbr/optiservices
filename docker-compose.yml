@@ -19,7 +19,12 @@ services:
     image: nginx:1.27-alpine
     volumes:
       - ./web:/usr/share/nginx/html:ro
-      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      # modèle : l'image nginx y remplace ${MJ2_URL} et ${MJ2_CLE} et l'écrit dans conf.d/default.conf
+      - ./nginx.conf:/etc/nginx/templates/default.conf.template:ro
+    environment:
+      # MaJournée V2 : à renseigner dans le .env du serveur (jamais dans git). Sans valeur, /mj2/ répond 502.
+      - MJ2_URL=${MJ2_URL:-http://mj2-non-configure.invalid}
+      - MJ2_CLE=${MJ2_CLE:-}
     ports: [ "8080:80" ]
     depends_on: [ vroom, osrm ]
     restart: unless-stopped

@@ -1187,7 +1187,7 @@ function renderResult() {
   const R = resultatDuJour();
   const box = $('#r-routes');
   $('#r-opt-zone').hidden = !!R;
-  $('#r-csv').disabled = $('#r-print').disabled = $('#r-stats').disabled = !R;
+  $('#r-csv').disabled = $('#r-mj2').disabled = $('#r-print').disabled = $('#r-stats').disabled = !R;
   if (!R) {
     const n = state.rdv.filter((r) => r.date === state.date).length;
     $('#r-titre').textContent = 'Tournées · ' + longDate(state.date);
@@ -1478,6 +1478,30 @@ function exportCsv() {
   J.info('action', 'Export des tournées', `${nom} · ${lignes.length} ligne${pl(lignes.length)}`);
 }
 
+/* aperçu des tournées au format du contrat MJ2 (docs/mj2-contrat.md) : un JSON par AMD, rien n'est envoyé.
+   La version de publication n'est pas encore suivie : 1 par défaut. */
+function mj2Tournee(R, i, extra) {
+  return OptiMJ2.tournee(R, i, Object.assign({
+    jourMeme: R.date === T.isoLocal(new Date()),
+    antenne: (a) => { const d = depotOf(a.depot); return { code: a.depot || '', nom: d ? d.nom : '' }; },
+    fenetre: (rd) => rdvWindow(rd),
+    creneauNom: (rd) => crenOf(rd.cren).nom,
+    duree: (rd) => rdvDuree(rd),
+    typesOf: rdvTypes,
+    typeLibelle: (c) => { const t = typeOf(c); return t ? t.nom : c; },
+    forceLibelle: (rg) => OptiForce.libelle(rg)
+  }, extra));
+}
+function exportJsonMj2() {
+  const R = resultatDuJour(); if (!R) return;
+  const tournees = R.amds.map((a, i) => mj2Tournee(R, i));
+  const erreurs = tournees.flatMap((t) => OptiMJ2.controleTournee(t).map((e) => `${t.amd.nom || '?'} : ${e}`));
+  const nom = `mj2_tournees_${R.date}.json`;
+  download(nom, JSON.stringify(tournees, null, 2), 'application/json;charset=utf-8');
+  if (erreurs.length) J.warn('action', 'Aperçu MJ2 : tournées incomplètes', erreurs.slice(0, 20).join(' · '));
+  J.info('action', 'Aperçu des tournées au format MJ2', `${nom} · ${tournees.length} AMD`);
+}
+
 /* export de la tournée d'un seul AMD : ordre de passage, code et nom des patients, pour comparer à l'existant */
 function exportCsvAmd(i) {
   const R = resultatDuJour(); const a = R && R.amds[i]; if (!a) return;
@@ -1571,6 +1595,7 @@ J.info('systeme', 'Ouverture de l’application', `${state.rdv.length} RDV · ${
 bindParams();
 bindPlan();
 $('#r-csv').addEventListener('click', exportCsv);
+$('#r-mj2').addEventListener('click', exportJsonMj2);
 $('#r-stats').addEventListener('click', openStats);
 $('#st-close').addEventListener('click', () => $('#dlg-stats').close());
 $('#st-csv').addEventListener('click', exportStatsCsv);
