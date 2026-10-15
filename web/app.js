@@ -296,7 +296,10 @@ function renderParams() {
     <td><input type="time" class="mono" data-cren="${c.code}" data-pos="0" value="${p.creneaux[c.code][0]}" aria-label="Début ${c.nom}"></td>
     <td><input type="time" class="mono" data-cren="${c.code}" data-pos="1" value="${p.creneaux[c.code][1]}" aria-label="Fin ${c.nom}"></td></tr>`).join('');
   $$('[data-param]').forEach((el) => { el.value = p[el.dataset.param]; });
-  $('#t-types').innerHTML = p.types.map((t, i) => `<tr>
+  // affichage trié par code ; data-type garde l'index dans p.types
+  $('#c-types').textContent = '· ' + p.types.length;
+  const ordre = p.types.map((t, i) => [t, i]).sort((a, b) => ddCmp(String(a[0].code), String(b[0].code)));
+  $('#t-types').innerHTML = ordre.map(([t, i]) => `<tr>
     <td style="width:110px"><input class="mono" data-type="${i}" data-k="code" value="${esc(t.code)}" aria-label="Code"></td>
     <td><input data-type="${i}" data-k="nom" value="${esc(t.nom)}" aria-label="Libellé"></td>
     <td style="width:170px"><input type="number" min="0" step="5" class="mono" data-type="${i}" data-k="duree" value="${t.duree}" aria-label="Durée"></td>
@@ -680,6 +683,7 @@ function bindPlan() {
     J.info('import', 'Fichier sélectionné', f.name, { taille: f.size < 1024 ? f.size + ' octets' : Math.round(f.size / 1024) + ' Ko' });
     try { importCsv(await f.text(), f.name); } catch (err) { console.error(err); J.crit('import', 'Import interrompu', `« ${f.name} » : erreur inattendue pendant l'intégration`, err); }
     e.target.value = '';
+    renderParams(); // types de visite ajoutés par l'import
   });
   // import des AMD (CSV) : la logique est dans js/amd/amd-csv.js, chargé à la demande
   const amdCsv = import('./js/amd/amd-csv.js');

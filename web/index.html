@@ -77,28 +77,15 @@ AMD02;MARTIN Julie;ARARD 04/05;matin;5;250</pre>
     </details>
   </section>
 
-  <div class="grid2">
-    <section class="card">
-      <h2>Journée type d'un AMD</h2>
-      <div class="grid2 tight">
-        <div><label for="p-amp-deb">Début de journée</label><input id="p-amp-deb" type="time" data-param="ampDeb"></div>
-        <div><label for="p-amp-fin">Fin de journée</label><input id="p-amp-fin" type="time" data-param="ampFin"></div>
-        <div><label for="p-hmax">Heures max de conduite</label><input id="p-hmax" type="number" min="0" step="0.5" data-param="hmax"></div>
-        <div><label for="p-kmmax">Kilomètres max / jour</label><input id="p-kmmax" type="number" min="0" step="10" data-param="kmmax"></div>
-        <div><label for="p-coef">Majoration trafic (%)</label><input id="p-coef" type="number" min="0" max="100" step="5" data-param="coef"></div>
-      </div>
-      <p class="hint">Les heures et km max sont repris pour chaque nouvel AMD et restent modifiables à l'écran Planification. La majoration allonge tous les temps de trajet calculés.</p>
-    </section>
-
-    <section class="card">
-      <h2>Pause déjeuner</h2>
-      <div class="grid2 tight">
-        <div><label for="p-pause-deb">Début au plus tôt</label><input id="p-pause-deb" type="time" data-param="pauseDeb"></div>
-        <div><label for="p-pause-fin">Fin au plus tard</label><input id="p-pause-fin" type="time" data-param="pauseFin"></div>
-        <div><label for="p-pause-duree">Durée de la pause (min)</label><input id="p-pause-duree" type="number" min="0" step="5" data-param="pauseDuree"></div>
-      </div>
-    </section>
-  </div>
+  <section class="card">
+    <h2>Limites d'un AMD</h2>
+    <div class="grid3 tight">
+      <div><label for="p-hmax">Heures max de conduite</label><input id="p-hmax" type="number" min="0" step="0.5" data-param="hmax"></div>
+      <div><label for="p-kmmax">Kilomètres max / jour</label><input id="p-kmmax" type="number" min="0" step="10" data-param="kmmax"></div>
+      <div><label for="p-coef">Majoration trafic (%)</label><input id="p-coef" type="number" min="0" max="100" step="5" data-param="coef"></div>
+    </div>
+    <p class="hint">Les heures et km max sont repris pour chaque nouvel AMD et restent modifiables à l'écran Planification. La majoration allonge tous les temps de trajet calculés. Les horaires de journée et la pause se règlent dans l'écran <a href="#parametres-rdv">Paramètres RDV</a>.</p>
+  </section>
 
   <section class="card">
     <div class="row-between">
@@ -181,18 +168,39 @@ AMD02;MARTIN Julie;ARARD 04/05;matin;5;250</pre>
     </section>
   </div>
 
-  <!-- masqué pour le POC : les durées restent appliquées -->
-  <section class="card" id="card-types" hidden>
+  <div class="grid2">
+    <section class="card">
+      <h2>Journée des AMD</h2>
+      <div class="grid2 tight">
+        <div><label for="p-amp-deb">Début de journée</label><input id="p-amp-deb" type="time" data-param="ampDeb"></div>
+        <div><label for="p-amp-fin">Fin de journée</label><input id="p-amp-fin" type="time" data-param="ampFin"></div>
+      </div>
+      <p class="hint">Heures de départ et de retour à l'antenne, communes à tous les AMD. Un AMD disponible le matin seulement s'arrête au début de la pause ; l'après-midi seulement, il commence à la fin de la pause.</p>
+    </section>
+
+    <section class="card">
+      <h2>Pause déjeuner</h2>
+      <div class="grid3 tight">
+        <div><label for="p-pause-deb">Début au plus tôt</label><input id="p-pause-deb" type="time" data-param="pauseDeb"></div>
+        <div><label for="p-pause-fin">Fin au plus tard</label><input id="p-pause-fin" type="time" data-param="pauseFin"></div>
+        <div><label for="p-pause-duree">Durée de la pause (min)</label><input id="p-pause-duree" type="number" min="0" step="5" data-param="pauseDuree"></div>
+      </div>
+      <p class="hint">La pause est placée dans cette plage pour les AMD disponibles toute la journée. Une durée de 0 supprime la pause.</p>
+    </section>
+  </div>
+
+  <section class="card" id="card-types">
     <div class="row-between">
-      <h2>Types d'intervention</h2>
+      <h2>Temps par type de visite <span class="count" id="c-types"></span></h2>
       <button class="btn2" id="type-add" type="button">+ Ajouter un type</button>
     </div>
     <div class="scroll">
       <table class="tbl">
-        <thead><tr><th>Code CSV</th><th>Libellé</th><th>Durée sur place (min)</th><th>Visite O2 (repère dans l'agenda)</th><th></th></tr></thead>
+        <thead><tr><th>Code Isadom</th><th>Libellé</th><th>Durée sur place (min)</th><th>Visite O2 (repère dans l'agenda)</th><th></th></tr></thead>
         <tbody id="t-types"></tbody>
       </table>
     </div>
+    <p class="hint">Durée passée chez le patient, hors stationnement. Un code de visite Isadom absent de la liste y est ajouté à l'import avec 20 min. Un RDV à plusieurs types compte la somme de leurs durées multipliée par le pourcentage de « Temps sur place ».</p>
   </section>
 </section>
 
