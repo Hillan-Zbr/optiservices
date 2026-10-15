@@ -199,8 +199,9 @@ const typeOf = (code) => state.params.types.find((t) => t.code === code);
 const depotOf = (id) => state.params.depots.find((d) => d.id === id);
 /* point de départ correspondant à l'antenne Isadom d'un RDV (libellé AnnAnnuaire.sNom, ex. « ARARD 13 ») */
 const depotOfAntenne = (antenne) => state.params.depots.find((d) => d.isadom && norm(d.isadom) === norm(antenne));
-/* un RDV Isadom n'est optimisé que si son antenne correspond à un point de départ inclus dans le test */
-const rdvInScope = (rd) => { if (!rd.antenne) return true; const d = depotOfAntenne(rd.antenne); return !!(d && d.actif); };
+/* un RDV Isadom est écarté seulement si son antenne est un point de départ décoché « Inclus dans le test ».
+   Une antenne Isadom sans point de départ (ARARD PHARMA…) ne l'écarte pas : le RDV suit son AMD, qui part de son antenne habituelle. */
+const rdvInScope = (rd) => { if (!rd.antenne) return true; const d = depotOfAntenne(rd.antenne); return !d || !!d.actif; };
 /* RDV pris en compte : antenne du test et AMD Isadom connu de la liste des AMD (15/10/2026).
    Un RDV sans AMD ou affecté à un AMD inconnu est ignoré partout (calcul, RDV écartés, agenda, stats). */
 const rdvAmdConnu = (rd) => state.amd.some((a) => amdMatch(rd, a));
