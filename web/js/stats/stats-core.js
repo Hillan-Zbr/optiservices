@@ -8,7 +8,8 @@
      typesOf(rd) -> codes de type de visite du RDV
      motifNonAffecte(rd) -> motif d'un RDV que VROOM n'a pas pu placer
      amdIdxOf(rd) -> (facultatif) indice de l'AMD du RDV dans R.amds, -1 si aucun ; à défaut rd.amdIdx
-   Un RDV à plusieurs types de visite est compté dans chacun de ses types. */
+   Un RDV à plusieurs types de visite est compté dans chacun de ses types.
+   R.force (facultatif) : réglage du placement forcé par AMD (OptiForce), repris tel quel dans amd[i].force. */
 (function (root, factory) {
   const api = factory();
   if (typeof module === 'object' && module.exports) module.exports = api;
@@ -40,7 +41,7 @@
     const amd = (R.amds || []).map((a, i) => {
       const r = res.routes.find((x) => x.vehicle === i + 1);
       const jobs = r ? r.steps.filter((s) => s.type === 'job').map((s) => rdv[s.job - 1]).filter(Boolean) : [];
-      return { nom: a.nom, code: a.code || '', depot: a.depot, n: jobs.length, nonPlaces: non.filter((x) => idxOf(x.rd) === i).length, parType: repartition(jobs, typesOf), distance: r ? r.distance || 0 : 0, duration: r ? r.duration || 0 : 0 };
+      return { nom: a.nom, code: a.code || '', depot: a.depot, n: jobs.length, nonPlaces: non.filter((x) => idxOf(x.rd) === i).length, parType: repartition(jobs, typesOf), force: (R.force || [])[i] || null, distance: r ? r.distance || 0 : 0, duration: r ? r.duration || 0 : 0 };
     });
     const parMotif = new Map();
     non.forEach((x) => { if (!parMotif.has(x.motif)) parMotif.set(x.motif, []); parMotif.get(x.motif).push(x); });

@@ -84,3 +84,11 @@ test('RDV non placés comptés par AMD (non affectés et écartés)', () => {
   // sans amdIdxOf : seul rd.amdIdx compte
   assert.deepEqual(S.computeStats(R2, { typesOf, motifNonAffecte }).amd.map((a) => a.nonPlaces), [0, 1]);
 });
+
+test('placement forcé : le réglage de chaque AMD est repris, null sans placement forcé', () => {
+  const rg = { coef: 70, limites: false, fin: false, creneau: false };
+  const s = S.computeStats(Object.assign({}, R, { force: [rg] }), { typesOf, motifNonAffecte });
+  assert.deepEqual(s.amd[0].force, rg);
+  assert.equal(s.amd[1].force, null);
+  assert.equal(S.computeStats(R, { typesOf, motifNonAffecte }).amd[0].force, null);
+});

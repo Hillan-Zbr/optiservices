@@ -85,7 +85,7 @@ const DISPOS = [
 /* ---------- valeurs par défaut ---------- */
 const DEFAULT_PARAMS = {
   creneaux: { matin: ['08:00', '12:00'], mi: ['11:00', '14:00'], am: ['13:30', '17:30'], jour: ['08:00', '17:30'] },
-  pauseDeb: '12:00', pauseFin: '13:30', pauseDuree: 60, stationnement: 10, multiCoef: 80,
+  pauseDeb: '12:00', pauseFin: '13:30', pauseDuree: 60, stationnement: 10, multiCoef: 80, tempsMin: 50,
   ampDeb: '08:00', ampFin: '17:30', hmax: 5, kmmax: 250, coef: 15,
   types: [
     { code: 'LIV', nom: 'Livraison simple', duree: 15, o2: false },
@@ -170,6 +170,7 @@ function load() {
 function migrateParams(p) {
   p.creneaux = Object.assign(clone(DEFAULT_PARAMS.creneaux), p.creneaux);
   if (p.multiCoef == null) p.multiCoef = DEFAULT_PARAMS.multiCoef;
+  if (p.tempsMin == null) p.tempsMin = DEFAULT_PARAMS.tempsMin;
   p.depots.forEach((d) => {
     if (d.isadom == null) { const def = DEFAULT_PARAMS.depots.find((x) => x.id === d.id); d.isadom = def ? def.isadom : ''; }
   });
@@ -1022,37 +1023,46 @@ async function optimize() {
 
     alertMsg(msg, 'Calcul des tournées…');
     const sf = 1 / (1 + (Number(p.coef) || 0) / 100);
-    const vehicles = amds.map((a, i) => {
-      const d = depotOf(a.depot); const loc = [d.geo.lon, d.geo.lat];
+    // placement forcé (OptiForce) : reglages[i] desserre l'AMD n° i (temps sur place, limites, fin de journée, créneaux)
+    const fenetreAmd = (a, rg) => { const w = vehicleWindow(a, p); return rg.fin ? [w[0], Math.max(w[1], OptiForce.FIN_REPOUSSEE)] : w; };
+    const buildVehicles = (reglages) => amds.map((a, i) => {
+      const d = depotOf(a.depot); const loc = [d.geo.lon, d.geo.lat]; const rg = reglages[i];
       const v = {
         id: i + 1, description: a.nom, profile: 'car', start: loc, end: loc,
-        time_window: vehicleWindow(a, p), speed_factor: Math.min(5, Math.max(0.2, sf)),
+        time_window: fenetreAmd(a, rg), speed_factor: Math.min(5, Math.max(0.2, sf)),
         skills: [100 + i] // AMD bloqué : ne reçoit que ses propres RDV
       };
-      if (a.hmax > 0) v.max_travel_time = Math.round(a.hmax * 3600);
-      if (a.kmmax > 0) v.max_distance = Math.round(a.kmmax * 1000);
+      if (a.hmax > 0 && !rg.limites) v.max_travel_time = Math.round(a.hmax * 3600);
+      if (a.kmmax > 0 && !rg.limites) v.max_distance = Math.round(a.kmmax * 1000);
       if (a.dispo === 'journee' && p.pauseDuree > 0) {
         v.breaks = [{ id: i + 1, description: 'Pause', time_windows: [[hm2s(p.pauseDeb), Math.max(hm2s(p.pauseDeb), hm2s(p.pauseFin) - p.pauseDuree * 60)]], service: p.pauseDuree * 60 }];
       }
       return v;
     });
-    const buildJobs = () => jobsR.map((r, j) => {
-      const { idx } = amdDuRdv(r, amds);
+    // le temps sur place (service) est réduit, jamais le stationnement ni les déplacements
+    const buildJobs = (reglages) => jobsR.map((r, j) => {
+      const { idx } = amdDuRdv(r, amds); const rg = idx >= 0 ? reglages[idx] : OptiForce.NORMAL;
       return {
         id: j + 1, description: r.patient, location: [r.geo.lon, r.geo.lat],
-        setup: p.stationnement * 60, service: rdvDuree(r, p) * 60,
-        time_windows: [rdvWindow(r, p)], skills: [idx >= 0 ? 100 + idx : SKILL_SANS_AMD]
+        setup: p.stationnement * 60, service: Math.round(rdvDuree(r, p) * 60 * rg.coef / 100),
+        time_windows: [rg.creneau ? fenetreAmd(amds[idx], rg) : rdvWindow(r, p)], skills: [idx >= 0 ? 100 + idx : SKILL_SANS_AMD]
       };
     });
     // RDV d'un même patient chez le même AMD à la même adresse : un seul job VROOM, pour qu'ils se suivent
     const cleGroupe = (r) => { const pat = String(r.patientCode || r.patient || '').trim().toUpperCase(); return pat ? amdDuRdv(r, amds).idx + '|' + pat : ''; };
-    let req, res, jobs, groupes;
+    const resoudre = async (reglages) => {
+      const jobs = buildJobs(reglages);
+      const groupes = OptiRegroupe.grouper(jobsR.map((r, j) => ({ cle: cleGroupe(r), lon: r.geo.lon, lat: r.geo.lat, fenetre: jobs[j].time_windows[0] })));
+      const req = { vehicles: buildVehicles(reglages), jobs: OptiRegroupe.fusionnerJobs(jobs, groupes), options: { g: true } };
+      return OptiRegroupe.eclaterReponse(await callVroom(req), jobs, groupes);
+    };
+    let res, force;
     // un RDV qu'OSRM ne sait pas rejoindre fait échouer tout le calcul : on l'écarte et on relance
     for (let essai = 0; ; essai++) {
-      jobs = buildJobs();
-      groupes = OptiRegroupe.grouper(jobsR.map((r, j) => ({ cle: cleGroupe(r), lon: r.geo.lon, lat: r.geo.lat, fenetre: jobs[j].time_windows[0] })));
-      req = { vehicles, jobs: OptiRegroupe.fusionnerJobs(jobs, groupes), options: { g: true } };
-      try { res = OptiRegroupe.eclaterReponse(await callVroom(req), jobs, groupes); break; } catch (e) {
+      try {
+        force = await OptiForce.forcer(resoudre, (id) => (jobsR[id - 1] ? amdDuRdv(jobsR[id - 1], amds).idx : -1), amds.length, p.tempsMin);
+        res = force.res; break;
+      } catch (e) {
         const m = /near location \[(-?[\d.]+),\s*(-?[\d.]+)\]/.exec(e.message || '');
         const lon = m && Number(m[1]), lat = m && Number(m[2]);
         const bad = m ? jobsR.filter((r) => Math.abs(r.geo.lon - lon) < 1e-5 && Math.abs(r.geo.lat - lat) < 1e-5) : [];
@@ -1065,8 +1075,11 @@ async function optimize() {
     // l'AMD retenu (ou le motif d'impossibilité) accompagne chaque RDV du résultat
     const rdvR = jobsR.map((r) => { const m = amdDuRdv(r, amds); return Object.assign(clone(r), { amdIdx: m.idx, motifAmd: m.motif || '' }); });
     // plus de 2e calcul « répartition libre » : le résultat retenu (envoyé à MJ2) respecte les affectations Isadom
-    state.results[state.date] = { date: state.date, at: new Date().toISOString(), mode: 'amd-bloque', amds: clone(amds), rdv: rdvR, excluded: clone(excluded), horsAmd, res, resAct: null, cmp: null };
+    state.results[state.date] = { date: state.date, at: new Date().toISOString(), mode: 'amd-bloque', amds: clone(amds), rdv: rdvR, excluded: clone(excluded), horsAmd, res, resAct: null, cmp: null, force: force.reglages };
     save();
+    const forces = amds.map((a, i) => ({ a, rg: force.reglages[i] })).filter((x) => OptiForce.estForce(x.rg));
+    if (forces.length) J.warn('optimisation', 'Placement forcé', `${forces.length} AMD saturé${forces.length > 1 ? 's' : ''} le ${frDate(state.date)} : tournée desserrée pour placer tous ses RDV`,
+      forces.map((x) => `${x.a.nom} · ${OptiForce.libelle(x.rg)}`));
     J.info('optimisation', 'Optimisation terminée', `Journée du ${frDate(state.date)} : ${res.routes.length} AMD mobilisé${res.routes.length > 1 ? 's' : ''} · ${fmtKm(res.summary.distance)} · ${fmtDur(res.summary.duration)} de conduite`,
       { mode: 'AMD bloqué (affectations Isadom conservées)', duree_calcul: ((Date.now() - t0) / 1000).toFixed(1) + ' s', rdv_planifies: jobsR.length - res.unassigned.length });
     if (res.unassigned.length) {
@@ -1193,6 +1206,8 @@ function renderResult() {
     const dLib = esc(d.nom) + (a.depotHabituel ? ` <span class="hint">(en renfort, habituellement ${esc((depotOf(a.depotHabituel) || { nom: a.depotHabituel }).nom)})</span>` : '');
     const nNonTenus = nonTenus.filter((rd) => rd.amdIdx === i).length;
     const nonTenusHtml = nNonTenus ? `<span class="over" title="RDV de cet AMD impossibles à placer : voir « RDV non affectés »">⚠ ${nNonTenus} non tenu${nNonTenus > 1 ? 's' : ''}</span>` : '';
+    const rg = (R.force || [])[i]; const forceLib = OptiForce.libelle(rg);
+    const forceHtml = forceLib ? `<span class="over" title="Placement forcé : la tournée a été desserrée pour placer tous les RDV de cet AMD">⚙ ${esc(forceLib)}</span>` : '';
     if (!r) return `<section class="route"><div class="route-h"><div class="who"><span class="dot" style="background:${col}"></span><b>${esc(a.nom)}</b><span>${dLib}</span></div><div class="tot mono"><span>0 RDV</span>${nonTenusHtml}</div></div><div class="empty">${nNonTenus ? 'Aucun RDV ne tient dans la journée de cet AMD : voir « RDV non affectés ».' : 'Aucun RDV prévu pour cet AMD.'}</div></section>`;
     const jobsN = r.steps.filter((s) => s.type === 'job').length;
     const kmOver = a.kmmax > 0 && r.distance > a.kmmax * 1000;
@@ -1206,13 +1221,15 @@ function renderResult() {
       if (s.type !== 'job') return '';
       n++; const rd = R.rdv[s.job - 1]; const c = crenOf(rd.cren);
       const wait = s.waiting_time > 60 ? ` · attente ${Math.round(s.waiting_time / 60)} min` : '';
+      // créneau élargi par le placement forcé : la visite peut commencer après la fin du créneau Isadom
+      const horsCren = s.arrival + (s.waiting_time || 0) > rdvWindow(rd)[1] ? ' <span class="over">⚠ hors créneau</span>' : '';
       const inf = infoTitle(rd);
       return `<li class="pick" data-job="${s.job}" tabindex="0" title="Voir sur la carte"><span class="n" style="background:${col}">${n}</span><span class="t">${s2hm(s.arrival)}</span>
-        <span><b>${esc(patientLib(rd))}</b> <span class="w">· ${esc(rd.ville)} · </span>${rdvTypeHtml(rd)}<span class="w">${rd.adresse ? ' · ' + esc(rd.adresse) : ''}${wait}</span>${rdvVisitePrest(rd) ? `<div class="hint mono">Visite | Prestation : ${esc(rdvVisitePrest(rd))}</div>` : ''}${rd.infoRdv ? `<div class="hint">Info RDV : ${esc(rd.infoRdv)}</div>` : ''}${inf ? `<details class="infos"><summary>Infos d'accès</summary>${rdvInfos(rd).map(([k, v]) => `<div><span class="hint">${esc(k)}</span> ${esc(v)}</div>`).join('')}</details>` : ''}</span>
+        <span><b>${esc(patientLib(rd))}</b>${horsCren} <span class="w">· ${esc(rd.ville)} · </span>${rdvTypeHtml(rd)}<span class="w">${rd.adresse ? ' · ' + esc(rd.adresse) : ''}${wait}</span>${rdvVisitePrest(rd) ? `<div class="hint mono">Visite | Prestation : ${esc(rdvVisitePrest(rd))}</div>` : ''}${rd.infoRdv ? `<div class="hint">Info RDV : ${esc(rd.infoRdv)}</div>` : ''}${inf ? `<details class="infos"><summary>Infos d'accès</summary>${rdvInfos(rd).map(([k, v]) => `<div><span class="hint">${esc(k)}</span> ${esc(v)}</div>`).join('')}</details>` : ''}</span>
         <span class="badge ${c.badge}" title="${esc(rdvWindowLabel(rd))}">${rd.hDeb ? esc(rd.hDeb + '–' + rd.hFin) : c.nom}</span></li>`;
     }).join('');
     return `<section class="route"><div class="route-h"><div class="who"><span class="dot" style="background:${col}"></span><b>${esc(a.nom)}</b><span>${dLib}</span></div>
-      <div class="tot mono"><span>${jobsN} RDV</span>${nonTenusHtml}<span class="${kmOver ? 'over' : ''}">${fmtKm(r.distance)}${a.kmmax ? ' / ' + a.kmmax + ' km' : ''}</span><span class="${hOver ? 'over' : ''}">${fmtDur(r.duration)}${a.hmax ? ' / ' + a.hmax + ' h' : ''} conduite</span><span>${s2hm(start.arrival)}–${s2hm(end.arrival)}</span><button class="btn2 small" type="button" data-csv-amd="${i}" title="Exporter l'ordre de passage de ${esc(a.nom)} (CSV) pour le comparer à l'existant">CSV</button></div></div>
+      <div class="tot mono"><span>${jobsN} RDV</span>${nonTenusHtml}${forceHtml}<span class="${kmOver ? 'over' : ''}">${fmtKm(r.distance)}${a.kmmax ? ' / ' + a.kmmax + ' km' : ''}</span><span class="${hOver ? 'over' : ''}">${fmtDur(r.duration)}${a.hmax ? ' / ' + a.hmax + ' h' : ''} conduite</span><span>${s2hm(start.arrival)}–${s2hm(end.arrival)}</span><button class="btn2 small" type="button" data-csv-amd="${i}" title="Exporter l'ordre de passage de ${esc(a.nom)} (CSV) pour le comparer à l'existant">CSV</button></div></div>
       <ol class="steps">${li}</ol></section>`;
   }).join('');
 
@@ -1279,9 +1296,9 @@ function openStats() {
       ${S.parType.map((t) => `<tr><td>${tvBadge(t.code)} ${esc((typeOf(t.code) || {}).nom || '')}</td><td class="num mono">${t.n}</td></tr>`).join('') || '<tr><td colspan="2" class="empty">Aucun RDV.</td></tr>'}
     </tbody></table>
     <h3>Répartition par AMD</h3>
-    <div class="scroll"><table class="tbl"><thead><tr><th>AMD</th><th>Antenne</th><th class="num">RDV</th><th>Types de visite</th><th class="num" title="RDV de cet AMD écartés du calcul ou qu’il ne peut pas tenir">Non placés</th><th class="num">Kilométrage</th><th class="num">Conduite</th></tr></thead><tbody>
-      ${S.amd.map((a) => `<tr><td><b>${esc(a.nom)}</b>${a.code ? ` <span class="hint mono">${esc(a.code)}</span>` : ''}</td><td>${esc((depotOf(a.depot) || { nom: a.depot }).nom)}</td><td class="num mono">${a.n}</td><td>${types(a.parType)}</td><td class="num mono">${a.nonPlaces ? `<span class="over">${a.nonPlaces}</span>` : '—'}</td><td class="num mono">${a.n ? fmtKm(a.distance) : '—'}</td><td class="num mono">${a.n ? fmtDur(a.duration) : '—'}</td></tr>`).join('')}
-      <tr><td colspan="2"><b>Total</b></td><td class="num mono"><b>${S.planifies}</b></td><td></td><td class="num mono"><b>${S.amd.reduce((t, a) => t + a.nonPlaces, 0) || '—'}</b></td><td class="num mono"><b>${fmtKm(S.distance)}</b></td><td class="num mono"><b>${fmtDur(S.duration)}</b></td></tr>
+    <div class="scroll"><table class="tbl"><thead><tr><th>AMD</th><th>Antenne</th><th class="num">RDV</th><th>Types de visite</th><th class="num" title="RDV de cet AMD écartés du calcul ou qu’il ne peut pas tenir">Non placés</th><th class="num">Kilométrage</th><th class="num">Conduite</th><th title="Tournée desserrée pour placer tous les RDV de l’AMD">Placement forcé</th></tr></thead><tbody>
+      ${S.amd.map((a) => `<tr><td><b>${esc(a.nom)}</b>${a.code ? ` <span class="hint mono">${esc(a.code)}</span>` : ''}</td><td>${esc((depotOf(a.depot) || { nom: a.depot }).nom)}</td><td class="num mono">${a.n}</td><td>${types(a.parType)}</td><td class="num mono">${a.nonPlaces ? `<span class="over">${a.nonPlaces}</span>` : '—'}</td><td class="num mono">${a.n ? fmtKm(a.distance) : '—'}</td><td class="num mono">${a.n ? fmtDur(a.duration) : '—'}</td><td>${OptiForce.libelle(a.force) ? `<span class="over">${esc(OptiForce.libelle(a.force))}</span>` : '—'}</td></tr>`).join('')}
+      <tr><td colspan="2"><b>Total</b></td><td class="num mono"><b>${S.planifies}</b></td><td></td><td class="num mono"><b>${S.amd.reduce((t, a) => t + a.nonPlaces, 0) || '—'}</b></td><td class="num mono"><b>${fmtKm(S.distance)}</b></td><td class="num mono"><b>${fmtDur(S.duration)}</b></td><td></td></tr>
     </tbody></table></div>
     <h3>RDV non planifiés par motif · ${S.nonPlanifies.total}</h3>
     ${S.nonPlanifies.parMotif.map((m) => `<details class="st-motif"><summary><b>${esc(m.motif)}</b> · ${m.n} RDV <span class="hint">(voir le détail)</span></summary>

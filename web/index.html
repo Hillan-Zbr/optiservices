@@ -174,8 +174,10 @@ AMD02;MARTIN Julie;ARARD 04/05;matin;5;250</pre>
       <div class="grid2 tight">
         <div><label for="p-stat">Temps de stationnement (min)</label><input id="p-stat" type="number" min="0" step="1" data-param="stationnement"></div>
         <div><label for="p-multi">RDV à plusieurs types : % de la somme des durées</label><input id="p-multi" type="number" min="10" max="100" step="5" data-param="multiCoef"></div>
+        <div><label for="p-tmin">AMD saturé : temps sur place minimum (%)</label><input id="p-tmin" type="number" min="0" max="100" step="5" data-param="tempsMin"></div>
       </div>
       <p class="hint">Le stationnement s'ajoute à chaque visite. Un code de type inconnu compte 20 min.</p>
+      <p class="hint">Aucun RDV ne doit rester non planifié : si un AMD ne peut pas tenir tous ses RDV, son temps sur place est réduit par pas de 10 % jusqu'à ce minimum (stationnement et trajets inchangés). Si cela ne suffit pas, ses heures et km max sont levés, puis sa fin de journée est repoussée à 21h00, enfin les créneaux de ses RDV sont élargis à toute sa journée.</p>
     </section>
   </div>
 
@@ -387,6 +389,7 @@ AMD02;MARTIN Julie;ARARD 04/05;matin;5;250</pre>
 <script src="js/stats/stats-core.js"></script>
 <script src="js/journal/journal-core.js"></script>
 <script src="js/optim/regroupe-core.js"></script>
+<script src="js/optim/force-core.js"></script>
 <script src="js/geo/geocode-core.js"></script>
 <script src="app.js"></script>
 <script type="module" src="js/agenda/agenda-main.js"></script>
