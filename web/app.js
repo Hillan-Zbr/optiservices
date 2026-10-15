@@ -105,19 +105,19 @@ const DEFAULT_PARAMS = {
     { id: 'aja', nom: 'Antenne · Ajaccio (20)', adr: '13 avenue Maréchal Juin, résidence Les Fleurs, 20090 Ajaccio', actif: true, isadom: 'ARARD 2A' }
   ]
 };
-/* types de visite Isadom (OrdRendezVousTypeVisite.sFKTypeVisite) : durées estimées par le métier (12/10/2026).
-   « Aléatoire » -> 20 min. O2 liquide : 14 min par cuve, 1 cuve par défaut. Code absent de cette liste -> 20 min. */
-const DUREE_TYPE_DEFAUT = 20;
+/* types de visite Isadom (OrdRendezVousTypeVisite.sFKTypeVisite) : durées estimées par le métier (12/10/2026),
+   divisées par 2 et CT à 2 min (15/10/2026). O2 liquide : 7 min par cuve, 1 cuve par défaut. Code absent de cette liste -> 10 min. */
+const DUREE_TYPE_DEFAUT = 10;
 const ISADOM_TYPES = [
-  ['AJT', 'Ajout de matériel', 10], ['CLC', 'Complément de liv. consommables', 10], ['CD', 'Contrôle dossier', 5],
-  ['DES', 'Désappareillage', 20], ['ECH', 'Échange de dispositif médical', 10], ['EQ', 'Enquête O2', 5],
-  ['LD', 'Livraison diabétologie', 10], ['MAD 1', 'Livraison MAD 1 : ret / petit MAD / objets / inconnu', 10],
-  ['MAD 2', 'Livraison MAD 2 : gros MAD (hors lit)', 20], ['MAD 3', 'Livraison MAD 3 : combiné gros + petit MAD', 30],
-  ['MAD 4', 'Livraison MAD 4 : livr/ret lit et combiné lit', 40], ['MAD 5', 'Livraison MAD 5 : vérification matelas à air', 50],
-  ['LNF', 'Livraison non effectuée avec déplacement', 5], ['LNF1', 'Livraison non effectuée sans déplacement', 0],
-  ['LIN', 'Livraison nutrition', 10], ['O2G', 'Livraison O2 gazeux', 10], ['OGL', 'Livraison O2 gazeux et liquide', 24],
-  ['LIVO2L', 'Livraison O2 liquide (14 min/cuve)', 14], ['O2L', 'Livraison O2 liquide (14 min/cuve)', 14],
-  ['LP', 'Livraison perfusion', 10], ['M', 'Maintenance', 20], ['RET', 'Retrait partiel de dispositif', 10]
+  ['AJT', 'Ajout de matériel', 5], ['CLC', 'Complément de liv. consommables', 5], ['CD', 'Contrôle dossier', 2.5], ['CT', 'CT', 2],
+  ['DES', 'Désappareillage', 10], ['ECH', 'Échange de dispositif médical', 5], ['EQ', 'Enquête O2', 2.5],
+  ['LD', 'Livraison diabétologie', 5], ['MAD 1', 'Livraison MAD 1 : ret / petit MAD / objets / inconnu', 5],
+  ['MAD 2', 'Livraison MAD 2 : gros MAD (hors lit)', 10], ['MAD 3', 'Livraison MAD 3 : combiné gros + petit MAD', 15],
+  ['MAD 4', 'Livraison MAD 4 : livr/ret lit et combiné lit', 20], ['MAD 5', 'Livraison MAD 5 : vérification matelas à air', 25],
+  ['LNF', 'Livraison non effectuée avec déplacement', 2.5], ['LNF1', 'Livraison non effectuée sans déplacement', 0],
+  ['LIN', 'Livraison nutrition', 5], ['O2G', 'Livraison O2 gazeux', 5], ['OGL', 'Livraison O2 gazeux et liquide', 12],
+  ['LIVO2L', 'Livraison O2 liquide (7 min/cuve)', 7], ['O2L', 'Livraison O2 liquide (7 min/cuve)', 7],
+  ['LP', 'Livraison perfusion', 5], ['M', 'Maintenance', 10], ['RET', 'Retrait partiel de dispositif', 5]
 ];
 // liste vide au départ, comme les RDV : les AMD sont importés par CSV à chaque test
 const DEFAULT_AMD = [];
@@ -176,6 +176,8 @@ function migrateParams(p) {
   });
   // 14/10/2026 : toutes les antennes entrent dans le test (une seule fois : on peut ensuite en décocher)
   if (!p.toutesAntennes) { p.depots.forEach((d) => { d.actif = true; }); p.toutesAntennes = true; }
+  // 15/10/2026 : durées des types de visite divisées par 2, CT à 2 min (une seule fois : on peut ensuite les modifier)
+  if (!p.dureesDemi) { p.types.forEach((t) => { t.duree = t.code === 'CT' ? 2 : (Number(t.duree) || 0) / 2; }); p.dureesDemi = true; }
 }
 let saveTimer;
 function save(flag) {
@@ -311,7 +313,7 @@ function renderParams() {
   $('#t-types').innerHTML = ordre.map(([t, i]) => `<tr>
     <td style="width:110px"><input class="mono" data-type="${i}" data-k="code" value="${esc(t.code)}" aria-label="Code"></td>
     <td><input data-type="${i}" data-k="nom" value="${esc(t.nom)}" aria-label="Libellé"></td>
-    <td style="width:170px"><input type="number" min="0" step="5" class="mono" data-type="${i}" data-k="duree" value="${t.duree}" aria-label="Durée"></td>
+    <td style="width:170px"><input type="number" min="0" step="0.5" class="mono" data-type="${i}" data-k="duree" value="${t.duree}" aria-label="Durée"></td>
     <td><input type="checkbox" data-type="${i}" data-k="o2" ${t.o2 ? 'checked' : ''} aria-label="Visite O2"></td>
     <td><button class="icon-btn" data-type-del="${i}" type="button" aria-label="Supprimer ce type">×</button></td></tr>`).join('');
   $('#l-depots').innerHTML = p.depots.map((d, i) => `<div class="depot ${d.actif ? 'on' : ''}">
