@@ -1268,7 +1268,7 @@ let statsCour = null; // { R, S } du compte rendu ouvert, pour l'export CSV
 function openStats() {
   const R = state.results[state.date]; const dlg = $('#dlg-stats');
   if (!R || !window.OptiStats || !dlg) return;
-  const S = window.OptiStats.computeStats(R, { typesOf: rdvTypes, motifNonAffecte: motifNonAffecte(R) });
+  const S = window.OptiStats.computeStats(R, { typesOf: rdvTypes, motifNonAffecte: motifNonAffecte(R), amdIdxOf: (rd) => (Number.isInteger(rd.amdIdx) ? rd.amdIdx : amdDuRdv(rd, R.amds).idx) });
   const types = (l) => (l.length ? `<div class="st-types">${l.map((t) => `<span>${tvBadge(t.code)} ${t.n}</span>`).join('')}</div>` : '<span class="hint">—</span>');
   const kpi = (lib, val) => `<div><span>${lib}</span><b class="mono">${val}</b></div>`;
   $('#st-titre').textContent = "Compte rendu de l'import de la journée du " + frDate(S.date);
@@ -1279,9 +1279,9 @@ function openStats() {
       ${S.parType.map((t) => `<tr><td>${tvBadge(t.code)} ${esc((typeOf(t.code) || {}).nom || '')}</td><td class="num mono">${t.n}</td></tr>`).join('') || '<tr><td colspan="2" class="empty">Aucun RDV.</td></tr>'}
     </tbody></table>
     <h3>Répartition par AMD</h3>
-    <div class="scroll"><table class="tbl"><thead><tr><th>AMD</th><th>Antenne</th><th class="num">RDV</th><th>Types de visite</th><th class="num">Kilométrage</th><th class="num">Conduite</th></tr></thead><tbody>
-      ${S.amd.map((a) => `<tr><td><b>${esc(a.nom)}</b>${a.code ? ` <span class="hint mono">${esc(a.code)}</span>` : ''}</td><td>${esc((depotOf(a.depot) || { nom: a.depot }).nom)}</td><td class="num mono">${a.n}</td><td>${types(a.parType)}</td><td class="num mono">${a.n ? fmtKm(a.distance) : '—'}</td><td class="num mono">${a.n ? fmtDur(a.duration) : '—'}</td></tr>`).join('')}
-      <tr><td colspan="2"><b>Total</b></td><td class="num mono"><b>${S.planifies}</b></td><td></td><td class="num mono"><b>${fmtKm(S.distance)}</b></td><td class="num mono"><b>${fmtDur(S.duration)}</b></td></tr>
+    <div class="scroll"><table class="tbl"><thead><tr><th>AMD</th><th>Antenne</th><th class="num">RDV</th><th>Types de visite</th><th class="num" title="RDV de cet AMD écartés du calcul ou qu’il ne peut pas tenir">Non placés</th><th class="num">Kilométrage</th><th class="num">Conduite</th></tr></thead><tbody>
+      ${S.amd.map((a) => `<tr><td><b>${esc(a.nom)}</b>${a.code ? ` <span class="hint mono">${esc(a.code)}</span>` : ''}</td><td>${esc((depotOf(a.depot) || { nom: a.depot }).nom)}</td><td class="num mono">${a.n}</td><td>${types(a.parType)}</td><td class="num mono">${a.nonPlaces ? `<span class="over">${a.nonPlaces}</span>` : '—'}</td><td class="num mono">${a.n ? fmtKm(a.distance) : '—'}</td><td class="num mono">${a.n ? fmtDur(a.duration) : '—'}</td></tr>`).join('')}
+      <tr><td colspan="2"><b>Total</b></td><td class="num mono"><b>${S.planifies}</b></td><td></td><td class="num mono"><b>${S.amd.reduce((t, a) => t + a.nonPlaces, 0) || '—'}</b></td><td class="num mono"><b>${fmtKm(S.distance)}</b></td><td class="num mono"><b>${fmtDur(S.duration)}</b></td></tr>
     </tbody></table></div>
     <h3>RDV non planifiés par motif · ${S.nonPlanifies.total}</h3>
     ${S.nonPlanifies.parMotif.map((m) => `<details class="st-motif"><summary><b>${esc(m.motif)}</b> · ${m.n} RDV <span class="hint">(voir le détail)</span></summary>

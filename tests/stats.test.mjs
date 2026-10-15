@@ -73,3 +73,14 @@ test('RDV sur des AMD non prévus : listés à part, hors totaux', () => {
   assert.deepEqual(s.horsAmd.parAmd.map((g) => [g.amd, g.n]), [['AMD TEST C', 2], ['', 1]]);
   assert.equal(S.computeStats(R, { typesOf, motifNonAffecte }).horsAmd.total, 0);
 });
+
+test('RDV non placés comptés par AMD (non affectés et écartés)', () => {
+  const R2 = Object.assign({}, R, {
+    rdv: R.rdv.map((rd, i) => Object.assign({}, rd, { amdIdx: i === 3 ? 1 : 0 })),
+    excluded: [{ idRdv: '5', types: ['LIN'], motif: 'adresse introuvable', amdActuel: 'AMD TEST B' }]
+  });
+  const s = S.computeStats(R2, { typesOf, motifNonAffecte, amdIdxOf: (rd) => (Number.isInteger(rd.amdIdx) ? rd.amdIdx : R2.amds.findIndex((a) => a.nom === rd.amdActuel)) });
+  assert.deepEqual(s.amd.map((a) => a.nonPlaces), [0, 2]);
+  // sans amdIdxOf : seul rd.amdIdx compte
+  assert.deepEqual(S.computeStats(R2, { typesOf, motifNonAffecte }).amd.map((a) => a.nonPlaces), [0, 1]);
+});
