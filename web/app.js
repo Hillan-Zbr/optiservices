@@ -199,6 +199,10 @@ const depotOf = (id) => state.params.depots.find((d) => d.id === id);
 const depotOfAntenne = (antenne) => state.params.depots.find((d) => d.isadom && norm(d.isadom) === norm(antenne));
 /* un RDV Isadom n'est optimisé que si son antenne correspond à un point de départ inclus dans le test */
 const rdvInScope = (rd) => { if (!rd.antenne) return true; const d = depotOfAntenne(rd.antenne); return !!(d && d.actif); };
+/* RDV pris en compte : antenne du test et AMD Isadom connu de la liste des AMD (15/10/2026).
+   Un RDV sans AMD ou affecté à un AMD inconnu est ignoré partout (calcul, RDV écartés, agenda, stats). */
+const rdvAmdConnu = (rd) => state.amd.some((a) => amdMatch(rd, a));
+const rdvPris = (rd) => rdvInScope(rd) && rdvAmdConnu(rd);
 
 /* ---------- navigation ---------- */
 const VIEWS = ['parametres', 'parametres-rdv', 'trajet', 'planification', 'resultat'];
@@ -391,8 +395,8 @@ function alertMsg(sel, html, kind) {
 function renderPlan() {
   if (!state.date) state.date = nextWorkday();
   $('#pl-date').value = frDate(state.date);
-  const nCible = state.rdv.filter((r) => r.date === state.date && rdvInScope(r)).length;
-  $('#pl-cible').textContent = `Seule la journée du ${longDate(state.date)} sera optimisée : ${nCible} RDV sur les antennes du test. Une journée à la fois.`;
+  const nCible = state.rdv.filter((r) => r.date === state.date && rdvPris(r)).length;
+  $('#pl-cible').textContent = `Seule la journée du ${longDate(state.date)} sera optimisée : ${nCible} RDV sur les antennes du test et affectés à un AMD connu. Une journée à la fois.`;
   const deps = state.params.depots;
   $('#c-amd').textContent = '· ' + state.amd.filter((a) => amdActif(a) && a.dispo !== 'absent').length;
   const amdOrder = ddTrier('amd', state.amd.map((a, i) => i).filter((i) => amdMatches(state.amd[i])));
@@ -413,17 +417,17 @@ function renderPlan() {
 
   const types = state.params.types;
   const dayAll = state.rdv.filter((r) => r.date === state.date);
-  const nDay = dayAll.length; const nScope = dayAll.filter(rdvInScope).length;
-  const probs = state.rdv.filter((r) => rdvInScope(r) && r.geo && (r.geo.none || !inZone(r.geo)))
+  const nDay = dayAll.length; const nScope = dayAll.filter(rdvPris).length;
+  const probs = state.rdv.filter((r) => rdvPris(r) && r.geo && (r.geo.none || !inZone(r.geo)))
     .map((r) => Object.assign({}, r, { motif: motifGeo(r) })).sort((a, b) => a.date.localeCompare(b.date));
   const nProbDay = probs.filter((r) => r.date === state.date).length;
   $('#pl-ecartes').hidden = !probs.length;
   $('#c-pl-ecartes').textContent = probs.length ? `· ${probs.length}` + (nProbDay ? ` dont ${nProbDay} le ${frDate(state.date)}` : '') : '';
   $('#t-pl-ecartes').innerHTML = ecartesRows(probs);
-  $('#c-rdv').textContent = `· ${state.rdv.length} au total · ${nDay} le ${frDate(state.date)}` + (nScope < nDay ? ` dont ${nScope} sur les antennes du test` : '');
+  $('#c-rdv').textContent = `· ${state.rdv.length} au total · ${nDay} le ${frDate(state.date)}` + (nScope < nDay ? ` dont ${nScope} pris en compte (antenne du test, AMD connu)` : '');
   // les RDV Isadom de la date sont affichés en tête ; ceux hors date ou hors antennes du test sont grisés
   const order = ddTrier('rdv', state.rdv.map((r, i) => i).filter((i) => rdvMatches(state.rdv[i])).sort((a, b) => (state.rdv[a].date === state.date ? 0 : 1) - (state.rdv[b].date === state.date ? 0 : 1) || a - b));
-  $('#t-rdv').innerHTML = state.rdv.length ? order.map((i) => { const r = state.rdv[i]; const isa = !!r.idRdv; return `<tr class="${r.date === state.date && rdvInScope(r) ? '' : 'off'}">
+  $('#t-rdv').innerHTML = state.rdv.length ? order.map((i) => { const r = state.rdv[i]; const isa = !!r.idRdv; return `<tr class="${r.date === state.date && rdvPris(r) ? '' : 'off'}">
     <td style="width:150px"><input class="mono gras" ${DATE_ATTRS} data-rdv="${i}" data-k="date" value="${frDate(r.date)}" aria-label="Date"></td>
     <td style="width:110px"><input class="mono gras" data-rdv="${i}" data-k="patientCode" value="${esc(r.patientCode || '')}" placeholder="—" aria-label="Code patient"></td>
     <td style="min-width:240px"><input data-rdv="${i}" data-k="patient" value="${esc(r.patient)}" aria-label="Patient">${isa ? `<div class="hint">${esc(r.antenne || '')} · RDV ${esc(r.idRdv)} · ${esc(r.besoin || '')}${infoTitle(r) ? ` · <span class="info-dot" title="${esc(infoTitle(r))}">infos</span>` : ''}</div>` : ''}</td>
@@ -911,14 +915,14 @@ function importIsadom(rows, head, name) {
     `${multi} RDV à plusieurs types de visite : durée = somme × ${p.multiCoef} %`,
     outScope ? `${outScope} RDV sur des antennes hors test (non optimisés tant que l'antenne n'est pas incluse dans les paramètres)` : '',
     created.length ? `${created.length} type${created.length > 1 ? 's' : ''} de visite ajouté${created.length > 1 ? 's' : ''} aux paramètres : ${created.map((t) => `<code>${esc(t.code)}</code> ${t.duree} min`).join(', ')}` : '',
-    unknownAmd.length ? `${unknownAmd.length} AMD absent${unknownAmd.length > 1 ? 's' : ''} de la liste (leurs RDV ne pourront pas être placés) : ${unknownAmd.map(([c, n]) => esc(n) + ' <span class="mono">(' + esc(c) + ')</span>').join(', ')} <button class="btn2" id="amd-from-isadom" type="button">Ajouter ${unknownAmd.length > 1 ? 'ces AMD' : 'cet AMD'}</button>` : ''
+    unknownAmd.length ? `${unknownAmd.length} AMD absent${unknownAmd.length > 1 ? 's' : ''} de la liste (leurs RDV ne sont pas pris en compte) : ${unknownAmd.map(([c, n]) => esc(n) + ' <span class="mono">(' + esc(c) + ')</span>').join(', ')} <button class="btn2" id="amd-from-isadom" type="button">Ajouter ${unknownAmd.length > 1 ? 'ces AMD' : 'cet AMD'}</button>` : ''
   ].filter(Boolean);
   const all = errs.concat(warns);
   logLines(name, errs, warns);
   created.forEach((t) => (t.connu
     ? J.info('import', 'Type de visite ajouté', `${t.code} · ${t.nom} : ${t.duree} min (durée métier Isadom)`, 'Fichier : ' + name)
     : J.warn('import', 'Type de visite inconnu ajouté', `${t.code} ajouté aux paramètres avec ${t.duree} min par défaut`, 'Durée à confirmer dans les paramètres · fichier : ' + name)));
-  if (unknownAmd.length) J.warn('import', 'AMD inconnus', `${unknownAmd.length} AMD absent${unknownAmd.length > 1 ? 's' : ''} de la liste : leurs RDV ne pourront pas être placés`, unknownAmd.map(([c, n]) => `${n} (${c})`));
+  if (unknownAmd.length) J.warn('import', 'AMD inconnus', `${unknownAmd.length} AMD absent${unknownAmd.length > 1 ? 's' : ''} de la liste : leurs RDV ne sont pas pris en compte`, unknownAmd.map(([c, n]) => `${n} (${c})`));
   if (outScope) J.info('import', 'RDV hors test', `${outScope} RDV sur des antennes non incluses dans le test`);
   if (geoRejet.length) J.warn('import', 'Coordonnées hors zone', `${geoRejet.length} RDV avec des coordonnées Isadom hors PACA / Corse : regéocodés par l'adresse`, geoRejet.map((id) => 'RDV ' + id));
   if (removed) J.info('import', 'RDV retirés', `${removed} RDV absent${removed > 1 ? 's' : ''} du nouvel export (annulés ou déplacés dans Isadom)`);
@@ -933,7 +937,7 @@ function importIsadom(rows, head, name) {
   if (seen.size && !state.rdv.some((r) => r.date === state.date)) state.date = [...dates].sort()[0];
   save(); renderPlan();
   // localise tout de suite les RDV sans coordonnées Isadom, pour signaler dès l'import ceux qui seront écartés
-  const toGeo = [...seen.values()].filter((rd) => aGeocoder(rd) && rdvInScope(rd));
+  const toGeo = [...seen.values()].filter((rd) => aGeocoder(rd) && rdvPris(rd));
   if (toGeo.length) {
     const st = document.createElement('p'); st.className = 'hint'; st.textContent = `Localisation de ${toGeo.length} adresse${toGeo.length > 1 ? 's' : ''} sans coordonnées Isadom…`;
     rep.appendChild(st);
@@ -955,7 +959,7 @@ const sameAmd = (name, a) => { const n = norm(name); const m = norm(a.nom); retu
 /* AMD actuel d'un RDV : par code Isadom quand les deux sont connus, sinon par le nom */
 const amdMatch = (rd, a) => (rd.amdCode && a.code ? String(a.code).trim() === String(rd.amdCode).trim() : sameAmd(rd.amdActuel, a));
 /* Mode « AMD bloqué » (par défaut) : chaque RDV reste chez l'AMD affecté dans Isadom, VROOM ne calcule que l'ordre de passage.
-   Compétence VROOM 100 + i = AMD n° i. Les RDV sans AMD prévu sont retirés avant le calcul (R.horsAmd, compte rendu seul) ;
+   Compétence VROOM 100 + i = AMD n° i. Les RDV sans AMD ou d’un AMD inconnu sont ignorés (rdvPris) ; ceux d’un AMD connu mais non prévu sont retirés avant le calcul (R.horsAmd, compte rendu seul) ;
    SKILL_SANS_AMD, qu'aucun véhicule ne possède, reste une sécurité : VROOM ne donne jamais un RDV à un collègue. */
 const SKILL_SANS_AMD = 99;
 const MOTIFS_AMD = {
@@ -984,8 +988,10 @@ async function optimize() {
     if (!iso) { alertMsg(msg, 'Date planifiée invalide : saisir une date au format jj/mm/aaaa.', 'err'); $('#pl-date').focus(); return; }
     if (iso !== state.date) { J.info('action', 'Date planifiée changée', frDate(iso)); state.date = iso; save(); renderPlan(); }
   }
-  const day = state.rdv.filter((r) => r.date === state.date && rdvInScope(r));
-  if (!day.length) { alertMsg(msg, `Aucun RDV le ${frDate(state.date)} sur les antennes incluses dans le test.`, 'err'); J.warn('optimisation', 'Optimisation impossible', `Aucun RDV le ${frDate(state.date)} sur les antennes incluses dans le test`); return; }
+  const day = state.rdv.filter((r) => r.date === state.date && rdvPris(r));
+  if (!day.length) { alertMsg(msg, `Aucun RDV le ${frDate(state.date)} sur les antennes incluses dans le test avec un AMD connu.`, 'err'); J.warn('optimisation', 'Optimisation impossible', `Aucun RDV le ${frDate(state.date)} sur les antennes incluses dans le test avec un AMD connu`); return; }
+  const nIgnores = state.rdv.filter((r) => r.date === state.date && rdvInScope(r) && !rdvAmdConnu(r)).length;
+  if (nIgnores) J.info('optimisation', 'RDV ignorés', `${nIgnores} RDV du ${frDate(state.date)} sans AMD ou affectés à un AMD inconnu : non pris en compte`);
   // antenne du jour : celle de la majorité des RDV Isadom de l'AMD ce jour-là (un AMD peut renforcer une autre antenne), sinon son point de départ habituel
   const depotDuJour = (a) => {
     const cnt = new Map();
@@ -1004,7 +1010,7 @@ async function optimize() {
     const m = amdDuRdv(day[k], amds);
     if (m.idx < 0) horsAmd.unshift(Object.assign(clone(day.splice(k, 1)[0]), { motifAmd: m.motif }));
   }
-  if (!day.length) { alertMsg(msg, `Les ${horsAmd.length} RDV du ${frDate(state.date)} sont affectés à des AMD non prévus (inactifs, absents ou inconnus) : rien à optimiser.`, 'err'); J.warn('optimisation', 'Optimisation impossible', `Journée du ${frDate(state.date)} : aucun RDV sur un AMD prévu`, horsAmd.map((r) => `${rdvRef(r)} · AMD ${r.amdActuel || '—'} · ${r.motifAmd}`)); return; }
+  if (!day.length) { alertMsg(msg, `Les ${horsAmd.length} RDV du ${frDate(state.date)} sont affectés à des AMD non prévus (inactifs ou absents) : rien à optimiser.`, 'err'); J.warn('optimisation', 'Optimisation impossible', `Journée du ${frDate(state.date)} : aucun RDV sur un AMD prévu`, horsAmd.map((r) => `${rdvRef(r)} · AMD ${r.amdActuel || '—'} · ${r.motifAmd}`)); return; }
   J.info('optimisation', 'Optimisation lancée', `Journée du ${frDate(state.date)} · ${day.length} RDV · ${amds.length} AMD`);
   if (horsAmd.length) J.warn('optimisation', 'RDV sur des AMD non prévus', `${horsAmd.length} RDV du ${frDate(state.date)} hors optimisation : leur AMD Isadom n'est pas prévu`, horsAmd.map((r) => `${rdvRef(r)} · AMD ${r.amdActuel || '—'} · ${r.motifAmd}`));
   const t0 = Date.now();
