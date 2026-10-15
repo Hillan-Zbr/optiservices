@@ -12,7 +12,6 @@
 .niv.info{background:#e3ecf8;color:var(--accent)}
 .niv.warn{background:var(--warn-soft);color:var(--warn)}
 .niv.crit{background:#fdecea;color:var(--danger)}
-.danger-txt{color:var(--danger);font-size:14px}
 
 /* fenêtre */
 .dlg{width:min(1200px,calc(100vw - 32px));max-height:calc(100vh - 32px);padding:0;border:1px solid var(--line);border-radius:12px;color:var(--fg);background:var(--surface);box-shadow:0 20px 50px rgba(16,24,40,.25)}

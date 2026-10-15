@@ -61,7 +61,8 @@ export async function fetchTrajetsAntennes(antennes, points, fetchFn = fetch) {
   const all = antennes.concat(points);
   const coords = all.map((p) => p.lonlat[0].toFixed(6) + ',' + p.lonlat[1].toFixed(6)).join(';');
   const url = `/osrm/table/v1/driving/${coords}?annotations=duration,distance`;
-  const r = await fetchFn(url);
+  const r = await fetchFn(url, { signal: AbortSignal.timeout(20000) });
+  if (r.ok === false) throw new Error('OSRM table indisponible (HTTP ' + r.status + ')');
   const j = await r.json();
   if (j.code !== 'Ok') throw new Error('OSRM table : ' + (j.message || j.code));
   const idx = new Map(all.map((p, i) => [p.key, i]));

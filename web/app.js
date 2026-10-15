@@ -11,11 +11,13 @@ const hm2s = (hm) => { const [h, m] = String(hm || '0:0').split(':').map(Number)
 const s2hm = (s) => { s = Math.round(s / 60); return String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0'); };
 const fmtDur = (s) => { const m = Math.round(s / 60); return Math.floor(m / 60) + ' h ' + String(m % 60).padStart(2, '0'); };
 const fmtKm = (m) => (m / 1000).toLocaleString('fr-FR', { maximumFractionDigits: 1 }) + ' km';
-const norm = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+/* texte, dates et CSV partagés avec les autres modules (js/commun/texte-core.js), règles d'import (js/import/import-core.js) */
+const T = window.OptiTexte;
+const { norm, parseDate, parseCsv } = T;
+const pl = T.s; // « s » du pluriel : `${n} RDV importé${pl(n)}`
 const clone = (o) => JSON.parse(JSON.stringify(o));
 /* journal d'activité (js/journal/journal-core.js) : sans effet s'il n'est pas chargé */
 const J = window.OptiJournal || { log() {}, info() {}, warn() {}, crit() {} };
-/* référence d'un RDV dans le journal : n° Isadom plutôt que le nom du patient (données de santé) */
 // référence d'un RDV dans le journal : n° Isadom, jamais le nom du patient (RGPD)
 const rdvRef = (rd) => (rd && rd.idRdv ? 'RDV ' + rd.idRdv : 'RDV saisi à la main' + (rd && rd.cp ? ' (' + rd.cp + ' ' + (rd.ville || '') + ')' : ''));
 /* libellé d'un champ de formulaire pour le journal */
@@ -29,6 +31,8 @@ const CRENEAUX = [
   { code: 'jour', nom: 'Journée', badge: 'b-jour' }
 ];
 const crenOf = (c) => CRENEAUX.find((x) => x.code === c) || CRENEAUX[0];
+/* créneau d'un RDV en texte court : heures Isadom si présentes, sinon nom du créneau */
+const crenTexte = (rd) => (rd.hDeb ? rd.hDeb + '–' + rd.hFin : crenOf(rd.cren).nom);
 /* fenêtre de passage d'un RDV (secondes) : heures réelles Isadom si présentes, sinon créneau paramétré */
 function rdvWindow(rd, p = state.params) {
   if (rd.hDeb && rd.hFin && hm2s(rd.hFin) > hm2s(rd.hDeb)) return [hm2s(rd.hDeb), hm2s(rd.hFin)];
@@ -149,12 +153,17 @@ const CSV_COLS = [
 ];
 
 /* ---------- état et persistance ---------- */
-const KEY = 'opriservices.v1';
+/* trois clés : la configuration et les RDV, les résultats (gros : tracés VROOM), le cache de géocodage.
+   Chacune n'est réécrite que si elle a changé. 15/10/2026 : l'ancienne clé « opriservices.v1 » (faute de frappe) est reprise une fois. */
+const KEY = 'optiservices.v1', KEY_RES = 'optiservices.resultats.v1', KEY_GEO = 'optiservices.geo.v1';
+const ANCIENNE_KEY = 'opriservices.v1';
+const lire = (k) => { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } };
 let state;
 function load() {
-  let s = null;
-  try { s = JSON.parse(localStorage.getItem(KEY)); } catch (e) { s = null; }
+  const s = lire(KEY) || lire(ANCIENNE_KEY);
   state = Object.assign({ params: clone(DEFAULT_PARAMS), amd: clone(DEFAULT_AMD), rdv: [], results: {}, geo: {}, date: null }, s || {});
+  const res = lire(KEY_RES); if (res) state.results = res;
+  const geo = lire(KEY_GEO); if (geo) state.geo = geo;
   state.params = Object.assign(clone(DEFAULT_PARAMS), state.params);
   migrateParams(state.params);
   // ancien format : un seul résultat
@@ -165,6 +174,13 @@ function load() {
   Object.values(state.results).forEach((R) => [R.rdv, R.excluded, R.horsAmd].forEach((l) => (l || []).forEach(sansCode)));
   // 14/10/2026 : cache du géocodage en cascade (clés « v2| ») ; l'ancien cache, échecs compris, est oublié
   Object.keys(state.geo).forEach((k) => { if (!k.startsWith('v2|')) delete state.geo[k]; });
+  // ancienne clé : on libère sa place avant d'écrire les nouvelles (sinon le stockage déborde), et on la remet si l'écriture échoue
+  if (!lire(KEY) && lire(ANCIENNE_KEY)) {
+    const ancien = localStorage.getItem(ANCIENNE_KEY);
+    localStorage.removeItem(ANCIENNE_KEY); saveNow();
+    if (!lire(KEY)) { try { localStorage.setItem(ANCIENNE_KEY, ancien); } catch (e) { /* rien de plus à faire */ } }
+    else J.info('systeme', 'Stockage migré', 'Données reprises de l’ancienne clé « opriservices.v1 » vers trois clés « optiservices.* »');
+  }
 }
 /* complète une configuration enregistrée avant l'import Isadom (créneau Journée, antennes Isadom, coefficient multi-types) */
 function migrateParams(p) {
@@ -179,17 +195,29 @@ function migrateParams(p) {
   // 15/10/2026 : durées des types de visite divisées par 2, CT à 2 min (une seule fois : on peut ensuite les modifier)
   if (!p.dureesDemi) { p.types.forEach((t) => { t.duree = t.code === 'CT' ? 2 : (Number(t.duree) || 0) / 2; }); p.dureesDemi = true; }
 }
-let saveTimer;
-function save(flag) {
+let saveTimer, saveDiffere;
+const ecrits = {}; // dernier texte écrit par clé
+function ecrire(k, v) { const t = JSON.stringify(v); if (ecrits[k] !== t) { localStorage.setItem(k, t); ecrits[k] = t; } }
+/* écriture immédiate ; stockage plein : on oublie le résultat le plus ancien, puis le cache de géocodage, et on réessaie */
+function saveNow() {
+  clearTimeout(saveDiffere); saveDiffere = null;
+  const base = Object.assign({}, state); delete base.results; delete base.geo;
   for (;;) {
-    try { localStorage.setItem(KEY, JSON.stringify(state)); break; } catch (e) {
-      // stockage plein : on oublie le résultat le plus ancien et on réessaie
+    try { ecrire(KEY, base); ecrire(KEY_RES, state.results); ecrire(KEY_GEO, state.geo); break; } catch (e) {
       const old = Object.values(state.results).sort((a, b) => a.at.localeCompare(b.at));
-      if (old.length < 2) { console.warn('Sauvegarde impossible', e); J.crit('systeme', 'Sauvegarde impossible', 'Stockage du navigateur plein : les dernières modifications ne seront pas conservées après rechargement', e); break; }
-      J.warn('systeme', 'Résultat purgé', `Stockage plein : résultat du ${frDate(old[0].date)} supprimé pour libérer de la place`);
-      delete state.results[old[0].date];
+      if (old.length >= 2) {
+        J.warn('systeme', 'Résultat purgé', `Stockage plein : résultat du ${frDate(old[0].date)} supprimé pour libérer de la place`);
+        delete state.results[old[0].date];
+      } else if (Object.keys(state.geo).length) {
+        J.warn('systeme', 'Cache de géocodage vidé', 'Stockage plein : les adresses déjà cherchées seront redemandées à la BAN');
+        state.geo = {};
+      } else { console.warn('Sauvegarde impossible', e); J.crit('systeme', 'Sauvegarde impossible', 'Stockage du navigateur plein : les dernières modifications ne seront pas conservées après rechargement', e); break; }
     }
   }
+}
+/* les modifications s'enchaînent (saisie, import) : on regroupe les écritures, et on écrit tout en quittant la page */
+function save(flag) {
+  clearTimeout(saveDiffere); saveDiffere = setTimeout(saveNow, 300);
   if (flag) {
     const fs = $$('.saved'); fs.forEach((f) => { f.textContent = 'Enregistré'; f.hidden = false; }); clearTimeout(saveTimer);
     saveTimer = setTimeout(() => { fs.forEach((f) => { f.hidden = true; }); }, 1500);
@@ -220,9 +248,9 @@ function route() {
   VIEWS.forEach((x) => { $('#v-' + x).hidden = x !== v; });
   document.body.dataset.view = v;
   const tab = v === 'trajet' ? 'parametres' : v;
-  $$('.tabs a').forEach((a) => a.classList.toggle('on', a.dataset.tab === tab));
+  $$('.tabs a').forEach((a) => { const on = a.dataset.tab === tab; a.classList.toggle('on', on); if (on) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
   if (v === 'parametres' || v === 'parametres-rdv') renderParams();
-  // les tableaux AMD et RDV sont sur les écrans de paramètres, les RDV écartés sur Planification
+  // tableau des AMD (Paramètres AMD), des RDV (Paramètres RDV), RDV écartés (Planification) : renderPlan dessine l'écran affiché
   if (v === 'parametres' || v === 'parametres-rdv' || v === 'planification') renderPlan();
   if (v === 'resultat') renderResult();
   if (v === 'trajet') initTrajet();
@@ -230,6 +258,13 @@ function route() {
 }
 
 /* ---------- géocodage (BAN via Géoplateforme) ---------- */
+/* appel réseau avec délai maximal : un service muet ne bloque plus l'écran indéfiniment */
+async function fetchService(url, opts, delaiMs, service) {
+  try { return await fetch(url, Object.assign({ signal: AbortSignal.timeout(delaiMs) }, opts)); } catch (e) {
+    if (e.name === 'TimeoutError') throw new Error(`${service} : pas de réponse en ${Math.round(delaiMs / 1000)} s`);
+    throw new Error(`${service} injoignable. Vérifiez que les conteneurs tournent (docker compose ps).`);
+  }
+}
 /* une recherche BAN : jusqu'à 5 résultats, mis en cache dans state.geo */
 async function chercherBan({ q, postcode, type }) {
   const key = 'v2|' + norm(q) + '|' + (postcode || '') + '|' + (type || '');
@@ -237,7 +272,7 @@ async function chercherBan({ q, postcode, type }) {
   let url = '/geocode/search?limit=5&q=' + encodeURIComponent(q);
   if (postcode) url += '&postcode=' + encodeURIComponent(postcode);
   if (type) url += '&type=' + encodeURIComponent(type);
-  const r = await fetch(url);
+  const r = await fetchService(url, {}, 15000, 'Géocodage BAN');
   if (r.status === 400) return []; // requête refusée par la BAN (trop courte, caractères) : rien à trouver
   if (!r.ok) throw new Error('Géocodage indisponible (HTTP ' + r.status + ')');
   const j = await r.json();
@@ -278,7 +313,8 @@ async function pool(items, fn, n = 5) {
   await Promise.all(Array.from({ length: n }, async () => {
     while (q.length) { const it = q.shift(); try { await fn(it); } catch (e) { errs.push(e); } }
   }));
-  if (errs.length) throw errs[0];
+  // toutes les erreurs sont comptées, la première sert de message
+  if (errs.length) { const e = errs[0]; if (errs.length > 1) e.message += ` (et ${errs.length - 1} autre${pl(errs.length - 1)} erreur${pl(errs.length - 1)})`; throw e; }
 }
 function geoBadge(g) {
   if (!g) return '<span class="geo no">À localiser</span>';
@@ -296,8 +332,8 @@ function geoBadge(g) {
 function ecartesRows(list) {
   return list.map((rd) => `<tr><td class="mono gras">${esc(frDate(rd.date))}</td><td class="mono gras">${esc(rd.patientCode || '')}</td><td class="mono gras">${esc(rd.idRdv || '')}</td><td><b>${esc(rd.patient)}</b>${rd.antenne ? `<div class="hint">${esc(rd.antenne)}</div>` : ''}</td>
     <td class="mono">${esc(rd.cp)}</td><td>${esc(rd.ville || '?')}</td><td>${esc(rd.adresse)}</td><td>${rdvTypeHtml(rd)}</td>
-    <td class="mono">${esc(rd.hDeb ? rd.hDeb + '–' + rd.hFin : crenOf(rd.cren).nom)}</td><td>${esc(rd.amdActuel)}</td>
-    <td><b style="color:var(--danger)">${esc(rd.motif)}</b>${rd.geo && rd.geo.label ? `<div class="hint">localisé : ${esc(rd.geo.label)}</div>` : ''}</td></tr>`).join('');
+    <td class="mono">${esc(crenTexte(rd))}</td><td>${esc(rd.amdActuel)}</td>
+    <td><b class="danger-txt">${esc(rd.motif)}</b>${rd.geo && rd.geo.label ? `<div class="hint">localisé : ${esc(rd.geo.label)}</div>` : ''}</td></tr>`).join('');
 }
 const motifGeo = (rd) => (rd.geo && rd.geo.horsZone ? MOTIF_HORS_ZONE : rd.geo && rd.geo.commune ? MOTIF_COMMUNE : rd.geo && !rd.geo.none && !inZone(rd.geo) ? MOTIF_HORS_ZONE : 'adresse introuvable');
 
@@ -312,9 +348,9 @@ function renderParams() {
   $('#c-types').textContent = '· ' + p.types.length;
   const ordre = p.types.map((t, i) => [t, i]).sort((a, b) => ddCmp(String(a[0].code), String(b[0].code)));
   $('#t-types').innerHTML = ordre.map(([t, i]) => `<tr>
-    <td style="width:110px"><input class="mono" data-type="${i}" data-k="code" value="${esc(t.code)}" aria-label="Code"></td>
+    <td class="w110"><input class="mono" data-type="${i}" data-k="code" value="${esc(t.code)}" aria-label="Code"></td>
     <td><input data-type="${i}" data-k="nom" value="${esc(t.nom)}" aria-label="Libellé"></td>
-    <td style="width:170px"><input type="number" min="0" step="0.5" class="mono" data-type="${i}" data-k="duree" value="${t.duree}" aria-label="Durée"></td>
+    <td class="w170"><input type="number" min="0" step="0.5" class="mono" data-type="${i}" data-k="duree" value="${t.duree}" aria-label="Durée"></td>
     <td><input type="checkbox" data-type="${i}" data-k="o2" ${t.o2 ? 'checked' : ''} aria-label="Visite O2"></td>
     <td><button class="icon-btn" data-type-del="${i}" type="button" aria-label="Supprimer ce type">×</button></td></tr>`).join('');
   $('#l-depots').innerHTML = p.depots.map((d, i) => `<div class="depot ${d.actif ? 'on' : ''}">
@@ -364,13 +400,13 @@ function bindParams() {
     try {
       await pool(state.params.depots, geocodeDepot);
       const ko = state.params.depots.filter((d) => d.geo && d.geo.none);
-      J.log(ko.length ? 'warn' : 'info', 'parametres', 'Localisation des antennes', ko.length ? `${ko.length} adresse${ko.length > 1 ? 's' : ''} introuvable${ko.length > 1 ? 's' : ''}` : `${state.params.depots.length} adresses localisées`, ko.map((d) => d.nom + ' : ' + d.adr));
+      J.log(ko.length ? 'warn' : 'info', 'parametres', 'Localisation des antennes', ko.length ? `${ko.length} adresse${pl(ko.length)} introuvable${pl(ko.length)}` : `${state.params.depots.length} adresses localisées`, ko.map((d) => d.nom + ' : ' + d.adr));
     } catch (err) { console.error(err); J.crit('parametres', 'Localisation des antennes', err.message); $$('.saved').forEach((f) => { f.textContent = err.message; f.hidden = false; }); }
     e.target.disabled = false; save(true); renderParams();
   });
   $('#cfg-export').addEventListener('click', () => {
-    download('opriservices-config.json', JSON.stringify({ params: state.params, amd: state.amd }, null, 2), 'application/json');
-    J.info('parametres', 'Export de la configuration', 'opriservices-config.json', { types: state.params.types.length, amd: state.amd.length });
+    download('optiservices-config.json', JSON.stringify({ params: state.params, amd: state.amd }, null, 2), 'application/json');
+    J.info('parametres', 'Export de la configuration', 'optiservices-config.json', { types: state.params.types.length, amd: state.amd.length });
   });
   $('#cfg-import').addEventListener('change', async (e) => {
     const f = e.target.files[0]; if (!f) return;
@@ -390,7 +426,7 @@ function bindParams() {
 function nextWorkday() {
   const d = new Date(); d.setDate(d.getDate() + 1);
   while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() + 1);
-  return d.toISOString().slice(0, 10);
+  return T.isoLocal(d);
 }
 const DATE_ATTRS = 'placeholder="jj/mm/aaaa" maxlength="10" inputmode="numeric" autocomplete="off"';
 function frDate(iso) { if (!iso) return ''; const [y, m, d] = iso.split('-'); return `${d}/${m}/${y}`; }
@@ -400,11 +436,36 @@ function longDate(iso) {
 function alertMsg(sel, html, kind) {
   const el = $(sel); el.className = 'msg' + (kind ? ' ' + kind : ''); el.innerHTML = html; el.hidden = !html;
 }
+/* dessine seulement l'écran affiché : les tableaux des écrans cachés le seront en y arrivant (route) */
 function renderPlan() {
   if (!state.date) state.date = nextWorkday();
+  const v = document.body.dataset.view;
+  if (v === 'planification') renderPlanif();
+  else if (v === 'parametres') renderAmdTable();
+  else if (v === 'parametres-rdv') renderRdvTable();
+}
+/* écran Planification : date, journée ciblée, RDV qui ne pourront pas être optimisés */
+function renderPlanif() {
   $('#pl-date').value = frDate(state.date);
   const nCible = state.rdv.filter((r) => r.date === state.date && rdvPris(r)).length;
   $('#pl-cible').textContent = `Seule la journée du ${longDate(state.date)} sera optimisée : ${nCible} RDV sur les antennes du test et affectés à un AMD connu. Une journée à la fois.`;
+  const probs = state.rdv.filter((r) => rdvPris(r) && r.geo && (r.geo.none || !inZone(r.geo)))
+    .map((r) => Object.assign({}, r, { motif: motifGeo(r) })).sort((a, b) => a.date.localeCompare(b.date));
+  const nProbDay = probs.filter((r) => r.date === state.date).length;
+  $('#pl-ecartes').hidden = !probs.length;
+  $('#c-pl-ecartes').textContent = probs.length ? `· ${probs.length}` + (nProbDay ? ` dont ${nProbDay} le ${frDate(state.date)}` : '') : '';
+  $('#t-pl-ecartes').innerHTML = ecartesRows(probs);
+}
+/* état des boutons ▾ d'en-tête (filtre actif, sens du tri) d'un tableau */
+function majDdBtns(t) {
+  $$('.dd-btn').filter((b) => (b.dataset.ddT || 'rdv') === t).forEach((b) => {
+    const D = DD[t]; const on = !!D.sel[b.dataset.dd]; const tri = D.tri && D.tri.k === b.dataset.dd ? D.tri.dir : 0;
+    b.classList.toggle('on', on); b.textContent = tri > 0 ? '↑' : tri < 0 ? '↓' : '▾';
+    b.title = [on ? 'Filtre actif' : '', tri ? (tri > 0 ? 'tri croissant' : 'tri décroissant') : ''].filter(Boolean).join(', ') || 'Filtrer ou trier';
+  });
+}
+/* écran Paramètres AMD : tableau des AMD */
+function renderAmdTable() {
   const deps = state.params.depots;
   $('#c-amd').textContent = '· ' + state.amd.filter((a) => amdActif(a) && a.dispo !== 'absent').length;
   const amdOrder = ddTrier('amd', state.amd.map((a, i) => i).filter((i) => amdMatches(state.amd[i])));
@@ -413,58 +474,66 @@ function renderPlan() {
     const d = depotOf(a.depot); const off = !amdActif(a) || a.dispo === 'absent' || !d || !d.actif;
     return `<tr class="${off ? 'off' : ''}">
     <td class="cb"><label><input type="checkbox" data-amd="${i}" data-k="actif" ${amdActif(a) ? 'checked' : ''} aria-label="AMD actif (décocher pour l'exclure de l'optimisation)"></label></td>
-    <td style="width:90px"><input class="mono" data-amd="${i}" data-k="code" value="${esc(a.code || '')}" placeholder="—" aria-label="Code Isadom de l'AMD"></td>
+    <td class="w90"><input class="mono" data-amd="${i}" data-k="code" value="${esc(a.code || '')}" placeholder="—" aria-label="Code Isadom de l'AMD"></td>
     <td><input data-amd="${i}" data-k="nom" value="${esc(a.nom)}" aria-label="Nom de l'AMD"></td>
     <td><select data-amd="${i}" data-k="depot" aria-label="Point de départ">${deps.map((x) => `<option value="${x.id}" ${x.id === a.depot ? 'selected' : ''}>${esc(x.nom)}${x.actif ? '' : ' (hors test)'}</option>`).join('')}</select></td>
     <td><select data-amd="${i}" data-k="dispo" aria-label="Disponibilité">${DISPOS.map((x) => `<option value="${x.code}" ${x.code === a.dispo ? 'selected' : ''}>${x.nom}</option>`).join('')}</select></td>
-    <td style="width:100px"><input type="number" min="0" step="0.5" class="mono" data-amd="${i}" data-k="hmax" value="${a.hmax}" aria-label="Heures max"></td>
-    <td style="width:100px"><input type="number" min="0" step="10" class="mono" data-amd="${i}" data-k="kmmax" value="${a.kmmax}" aria-label="Km max"></td>
+    <td class="w100"><input type="number" min="0" step="0.5" class="mono" data-amd="${i}" data-k="hmax" value="${a.hmax}" aria-label="Heures max"></td>
+    <td class="w100"><input type="number" min="0" step="10" class="mono" data-amd="${i}" data-k="kmmax" value="${a.kmmax}" aria-label="Km max"></td>
     <td><button class="icon-btn" data-amd-del="${i}" type="button" aria-label="Retirer cet AMD">×</button></td></tr>`;
   }).join('');
   if (state.amd.length && !amdOrder.length) $('#t-amd').innerHTML = '<tr><td colspan="8" class="empty">Aucun AMD ne correspond au filtre.</td></tr>';
-
+  majDdBtns('amd');
+  resetZoneSuppr('amd');
+}
+/* le tableau des RDV s'affiche par pages : un import d'une semaine dépasse le millier de lignes */
+const RDV_PAGE = 200;
+let rdvMax = RDV_PAGE;
+/* liste des types d'intervention : un <select> d'une seule option, complété au premier focus (sinon types × lignes options dans le DOM) */
+const optionsTypes = (cur) => state.params.types.map((t) => `<option value="${esc(t.code)}" ${t.code === cur ? 'selected' : ''}>${esc(typeLabel(t.code))}</option>`).join('')
+  + (typeOf(cur) ? '' : `<option selected value="${esc(cur)}">${esc(cur)} (inconnu)</option>`);
+function remplirTypes(sel) {
+  if (!sel.hasAttribute('data-types-lazy')) return;
+  sel.removeAttribute('data-types-lazy');
+  sel.innerHTML = optionsTypes(sel.value);
+}
+/* écran Paramètres RDV : tableau des RDV et format du CSV */
+function renderRdvTable() {
   const types = state.params.types;
-  const dayAll = state.rdv.filter((r) => r.date === state.date);
-  const nDay = dayAll.length; const nScope = dayAll.filter(rdvPris).length;
-  const probs = state.rdv.filter((r) => rdvPris(r) && r.geo && (r.geo.none || !inZone(r.geo)))
-    .map((r) => Object.assign({}, r, { motif: motifGeo(r) })).sort((a, b) => a.date.localeCompare(b.date));
-  const nProbDay = probs.filter((r) => r.date === state.date).length;
-  $('#pl-ecartes').hidden = !probs.length;
-  $('#c-pl-ecartes').textContent = probs.length ? `· ${probs.length}` + (nProbDay ? ` dont ${nProbDay} le ${frDate(state.date)}` : '') : '';
-  $('#t-pl-ecartes').innerHTML = ecartesRows(probs);
+  const nDay = state.rdv.filter((r) => r.date === state.date).length;
+  const nScope = state.rdv.filter((r) => r.date === state.date && rdvPris(r)).length;
   $('#c-rdv').textContent = `· ${state.rdv.length} au total · ${nDay} le ${frDate(state.date)}` + (nScope < nDay ? ` dont ${nScope} pris en compte (antenne du test, AMD connu)` : '');
   // les RDV Isadom de la date sont affichés en tête ; ceux hors date ou hors antennes du test sont grisés
   const order = ddTrier('rdv', state.rdv.map((r, i) => i).filter((i) => rdvMatches(state.rdv[i])).sort((a, b) => (state.rdv[a].date === state.date ? 0 : 1) - (state.rdv[b].date === state.date ? 0 : 1) || a - b));
-  $('#t-rdv').innerHTML = state.rdv.length ? order.map((i) => { const r = state.rdv[i]; const isa = !!r.idRdv; return `<tr class="${r.date === state.date && rdvPris(r) ? '' : 'off'}">
-    <td style="width:150px"><input class="mono gras" ${DATE_ATTRS} data-rdv="${i}" data-k="date" value="${frDate(r.date)}" aria-label="Date"></td>
-    <td style="width:110px"><input class="mono gras" data-rdv="${i}" data-k="patientCode" value="${esc(r.patientCode || '')}" placeholder="—" aria-label="Code patient"></td>
-    <td style="min-width:240px"><input data-rdv="${i}" data-k="patient" value="${esc(r.patient)}" aria-label="Patient">${isa ? `<div class="hint">${esc(r.antenne || '')} · RDV ${esc(r.idRdv)} · ${esc(r.besoin || '')}${infoTitle(r) ? ` · <span class="info-dot" title="${esc(infoTitle(r))}">infos</span>` : ''}</div>` : ''}</td>
-    <td style="width:88px"><input class="mono" data-rdv="${i}" data-k="cp" value="${esc(r.cp)}" aria-label="Code postal"></td>
+  const vus = order.slice(0, rdvMax);
+  const suite = order.length - vus.length;
+  $('#t-rdv').innerHTML = state.rdv.length ? vus.map((i) => { const r = state.rdv[i]; const isa = !!r.idRdv; return `<tr class="${r.date === state.date && rdvPris(r) ? '' : 'off'}">
+    <td class="w150"><input class="mono gras" ${DATE_ATTRS} data-rdv="${i}" data-k="date" value="${frDate(r.date)}" aria-label="Date"></td>
+    <td class="w110"><input class="mono gras" data-rdv="${i}" data-k="patientCode" value="${esc(r.patientCode || '')}" placeholder="—" aria-label="Code patient"></td>
+    <td class="mw240"><input data-rdv="${i}" data-k="patient" value="${esc(r.patient)}" aria-label="Patient">${isa ? `<div class="hint">${esc(r.antenne || '')} · RDV ${esc(r.idRdv)} · ${esc(r.besoin || '')}${infoTitle(r) ? ` · <span class="info-dot" title="${esc(infoTitle(r))}">infos</span>` : ''}</div>` : ''}</td>
+    <td class="w88"><input class="mono" data-rdv="${i}" data-k="cp" value="${esc(r.cp)}" aria-label="Code postal"></td>
     <td><input data-rdv="${i}" data-k="ville" value="${esc(r.ville)}" aria-label="Ville"></td>
     <td><input data-rdv="${i}" data-k="adresse" value="${esc(r.adresse)}" aria-label="Adresse"></td>
     <td>${r.types && r.types.length > 1
       ? `<span title="${esc(rdvTypeNom(r))}">${r.types.map(tvBadge).join(' + ')}</span><div class="hint">${rdvDuree(r)} min</div>`
-      : `<select data-rdv="${i}" data-k="type" aria-label="Intervention">${types.map((t) => `<option value="${esc(t.code)}" ${t.code === r.type ? 'selected' : ''}>${esc(typeLabel(t.code))}</option>`).join('')}${typeOf(r.type) ? '' : `<option selected value="${esc(r.type)}">${esc(r.type)} (inconnu)</option>`}</select>`}</td>
+      : `<select data-rdv="${i}" data-k="type" data-types-lazy aria-label="Intervention"><option value="${esc(r.type)}" selected>${esc(typeOf(r.type) ? typeLabel(r.type) : r.type + ' (inconnu)')}</option></select>`}</td>
     <td class="mono">${esc(rdvVisitePrest(r))}</td>
-    <td style="width:130px">${isa && r.hDeb
+    <td class="w130">${isa && r.hDeb
       ? `<span class="badge ${crenOf(r.cren).badge}">${crenOf(r.cren).nom}</span><div class="hint mono">${esc(r.hDeb)}–${esc(r.hFin)}</div>`
       : `<select data-rdv="${i}" data-k="cren" aria-label="Demi-journée">${CRENEAUX.map((c) => `<option value="${c.code}" ${c.code === r.cren ? 'selected' : ''}>${c.nom}</option>`).join('')}</select>`}</td>
     <td><input data-rdv="${i}" data-k="amdActuel" value="${esc(r.amdActuel)}" aria-label="AMD prévu">${r.amdCode ? `<div class="hint mono">code ${esc(r.amdCode)}</div>` : ''}</td>
     <td>${geoBadge(r.geo)}</td>
     <td><button class="icon-btn" data-rdv-del="${i}" type="button" aria-label="Supprimer ce RDV">×</button></td></tr>`; }).join('')
+    + (suite > 0 ? `<tr><td colspan="12" class="empty">${vus.length} RDV affichés sur ${order.length}. <button class="btn2 small" type="button" data-rdv-plus>Afficher les ${Math.min(RDV_PAGE, suite)} suivants</button></td></tr>` : '')
     : '<tr><td colspan="12" class="empty">Aucun RDV. Importez un fichier CSV, ajoutez un RDV ou chargez l\'exemple.</td></tr>';
   if (state.rdv.length && !order.length) $('#t-rdv').innerHTML = '<tr><td colspan="12" class="empty">Aucun RDV ne correspond à la recherche.</td></tr>';
-  $$('.dd-btn').forEach((b) => {
-    const D = DD[b.dataset.ddT || 'rdv']; const on = !!D.sel[b.dataset.dd]; const tri = D.tri && D.tri.k === b.dataset.dd ? D.tri.dir : 0;
-    b.classList.toggle('on', on); b.textContent = tri > 0 ? '↑' : tri < 0 ? '↓' : '▾';
-    b.title = [on ? 'Filtre actif' : '', tri ? (tri > 0 ? 'tri croissant' : 'tri décroissant') : ''].filter(Boolean).join(', ') || 'Filtrer ou trier';
-  });
+  majDdBtns('rdv');
   const filtering = Object.values(rdvFilter).some((v) => v && v.trim()) || Object.keys(rdvSel).length > 0;
-  if (filtering) $('#c-rdv').textContent += ` · ${order.length} trouvé${order.length > 1 ? 's' : ''}`;
+  if (filtering) $('#c-rdv').textContent += ` · ${order.length} trouvé${pl(order.length)}`;
 
   $('#t-csvfmt').innerHTML = CSV_COLS.map((c) => `<tr><td class="mono"><b>${c[0]}</b></td><td>${c[1]}</td><td>${esc(c[2])}</td><td class="mono">${esc(c[3])}</td></tr>`).join('')
     + `<tr><td colspan="4" class="hint">Codes d'intervention actuels : ${types.map((t) => `<code>${esc(t.code)}</code> ${esc(t.nom)}`).join(' · ')}</td></tr>`;
-  resetDelZone();
+  resetZoneSuppr('rdv');
 }
 /* recherche par colonne dans le tableau des RDV : chaque mot saisi doit figurer dans la colonne (sans accents ni casse) */
 const rdvFilter = {};
@@ -583,6 +652,7 @@ function ddOpen(btn) {
     if (t.matches('[data-dd-ok]')) {
       const coches = boxes().filter((x) => x.checked).map((x) => x.dataset.ddV);
       if (coches.length === vals.length) delete D.sel[k]; else D.sel[k] = new Set(coches);
+      rdvMax = RDV_PAGE;
       ddClose(); renderPlan(); btn.focus();
     }
   });
@@ -593,11 +663,28 @@ function ddOpen(btn) {
 }
 document.addEventListener('mousedown', (e) => { if (ddCol && !e.target.closest('#dd-pop, .dd-btn')) ddClose(); });
 window.addEventListener('resize', ddClose);
-function resetDelZone() {
-  $('#del-zone').innerHTML = '<button class="btn2 danger" id="rdv-clear" type="button">Tout supprimer</button>';
+/* « Tout supprimer » confirmé en deux temps, sans boîte de dialogue du navigateur */
+const ZONES_SUPPR = {
+  rdv: { zone: '#del-zone', quoi: 'RDV', n: () => state.rdv.length,
+    ok() { J.warn('action', 'Tous les RDV supprimés', `${state.rdv.length} RDV supprimés`); state.rdv = []; $('#csv-report').hidden = true; alertMsg('#pl-msg', ''); } },
+  amd: { zone: '#amd-del-zone', quoi: 'AMD', n: () => state.amd.length,
+    ok() { J.warn('action', 'Tous les AMD supprimés', `${state.amd.length} AMD supprimés`); state.amd = []; $('#amd-report').hidden = true; } }
+};
+function resetZoneSuppr(k) {
+  $(ZONES_SUPPR[k].zone).innerHTML = `<button class="btn2 danger" type="button" data-suppr="${k}">Tout supprimer</button>`;
 }
-function resetAmdDelZone() {
-  $('#amd-del-zone').innerHTML = '<button class="btn2 danger" id="amd-clear" type="button">Tout supprimer</button>';
+function clicSuppr(t) {
+  const ask = t.closest('[data-suppr]'), ok = t.closest('[data-suppr-ok]'), no = t.closest('[data-suppr-no]');
+  if (ask) {
+    const Z = ZONES_SUPPR[ask.dataset.suppr]; if (!Z.n()) return true;
+    $(Z.zone).innerHTML = `<span class="confirm-inline"><b class="danger-txt">Supprimer les ${Z.n()} ${Z.quoi} ?</b>
+      <button class="btn2 danger" type="button" data-suppr-ok="${ask.dataset.suppr}">Confirmer</button><button class="btn2" type="button" data-suppr-no="${ask.dataset.suppr}">Annuler</button></span>`;
+    $('[data-suppr-no]', $(Z.zone)).focus();
+    return true;
+  }
+  if (ok) { ZONES_SUPPR[ok.dataset.suppr].ok(); save(); resetZoneSuppr(ok.dataset.suppr); renderPlan(); return true; }
+  if (no) { resetZoneSuppr(no.dataset.suppr); $('[data-suppr]', $(ZONES_SUPPR[no.dataset.suppr].zone)).focus(); return true; }
+  return false;
 }
 let filterTimer;
 function bindPlan() {
@@ -631,7 +718,7 @@ function bindPlan() {
   v.addEventListener('input', (e) => {
     const el = e.target;
     if (el.dataset.filter) {
-      rdvFilter[el.dataset.filter] = el.value;
+      rdvFilter[el.dataset.filter] = el.value; rdvMax = RDV_PAGE;
       clearTimeout(filterTimer); filterTimer = setTimeout(renderPlan, 150);
       return;
     }
@@ -641,6 +728,9 @@ function bindPlan() {
     const d = el.value.replace(/\D/g, '').slice(0, 8);
     if (/^\d+$/.test(el.value)) el.value = [d.slice(0, 2), d.slice(2, 4), d.slice(4)].filter(Boolean).join('/');
   });
+  const lazy = (e) => { if (e.target.matches && e.target.matches('[data-types-lazy]')) remplirTypes(e.target); };
+  v.addEventListener('focusin', lazy);
+  v.addEventListener('mousedown', lazy);
   v.addEventListener('click', (e) => {
     const t = e.target;
     const dd = t.closest('.dd-btn');
@@ -649,23 +739,10 @@ function bindPlan() {
     if (ad) { const [a] = state.amd.splice(Number(ad.dataset.amdDel), 1); J.info('action', 'AMD retiré', a.nom + (a.code ? ' (' + a.code + ')' : '')); save(); renderPlan(); return; }
     const rd = t.closest('[data-rdv-del]');
     if (rd) { const [r] = state.rdv.splice(Number(rd.dataset.rdvDel), 1); J.info('action', 'RDV supprimé', `${rdvRef(r)} du ${frDate(r.date)}`); save(); renderPlan(); return; }
-    if (t.id === 'rdv-clear') {
-      if (!state.rdv.length) return;
-      $('#del-zone').innerHTML = `<span style="display:inline-flex;gap:8px;align-items:center;flex-wrap:wrap"><b style="color:var(--danger)">Supprimer les ${state.rdv.length} RDV ?</b>
-        <button class="btn2 danger" id="rdv-clear-ok" type="button">Confirmer</button><button class="btn2" id="rdv-clear-no" type="button">Annuler</button></span>`;
-      return;
-    }
-    if (t.id === 'rdv-clear-ok') { J.warn('action', 'Tous les RDV supprimés', `${state.rdv.length} RDV supprimés`); state.rdv = []; save(); $('#csv-report').hidden = true; alertMsg('#pl-msg', ''); renderPlan(); return; }
-    if (t.id === 'rdv-clear-no') { resetDelZone(); }
-    if (t.id === 'amd-clear') {
-      if (!state.amd.length) return;
-      $('#amd-del-zone').innerHTML = `<span style="display:inline-flex;gap:8px;align-items:center;flex-wrap:wrap"><b style="color:var(--danger)">Supprimer les ${state.amd.length} AMD ?</b>
-        <button class="btn2 danger" id="amd-clear-ok" type="button">Confirmer</button><button class="btn2" id="amd-clear-no" type="button">Annuler</button></span>`;
-      return;
-    }
-    if (t.id === 'amd-clear-ok') { J.warn('action', 'Tous les AMD supprimés', `${state.amd.length} AMD supprimés`); state.amd = []; save(); $('#amd-report').hidden = true; resetAmdDelZone(); renderPlan(); return; }
-    if (t.id === 'amd-clear-no') { resetAmdDelZone(); }
+    if (clicSuppr(t)) return;
+    if (t.closest('[data-rdv-plus]')) { rdvMax += RDV_PAGE; renderRdvTable(); return; }
     if (t.id === 'rdv-filter-clear') {
+      rdvMax = RDV_PAGE;
       Object.keys(rdvFilter).forEach((k) => delete rdvFilter[k]);
       Object.keys(rdvSel).forEach((k) => delete rdvSel[k]);
       $$('[data-filter]').forEach((x) => { x.value = ''; });
@@ -674,7 +751,7 @@ function bindPlan() {
     if (t.id === 'amd-from-isadom') {
       pendingAmd.forEach((a) => { if (!state.amd.some((x) => String(x.code || '') === a.code)) state.amd.push(a); });
       J.info('action', 'AMD ajoutés depuis Isadom', `${pendingAmd.length} AMD`, pendingAmd.map((a) => `${a.nom} (${a.code}) → ${(depotOf(a.depot) || {}).nom || a.depot}`));
-      t.replaceWith(document.createTextNode(`→ ${pendingAmd.length} AMD ajouté${pendingAmd.length > 1 ? 's' : ''} (point de départ = antenne de leurs RDV, à vérifier).`));
+      t.replaceWith(document.createTextNode(`→ ${pendingAmd.length} AMD ajouté${pl(pendingAmd.length)} (point de départ = antenne de leurs RDV, à vérifier).`));
       pendingAmd = []; save(); renderPlan();
     }
   });
@@ -734,40 +811,7 @@ function bindPlan() {
 }
 
 /* ---------- import CSV ---------- */
-function parseCsv(text) {
-  text = text.replace(/^﻿/, '');
-  const first = text.split(/\r?\n/)[0] || '';
-  const sep = (first.match(/;/g) || []).length >= (first.match(/,/g) || []).length ? ';' : ',';
-  const rows = []; let row = []; let cell = ''; let q = false;
-  for (let i = 0; i < text.length; i++) {
-    const c = text[i];
-    if (q) {
-      if (c === '"' && text[i + 1] === '"') { cell += '"'; i++; } else if (c === '"') q = false; else cell += c;
-    } else if (c === '"') q = true;
-    else if (c === sep) { row.push(cell); cell = ''; }
-    else if (c === '\n' || c === '\r') {
-      if (c === '\r' && text[i + 1] === '\n') i++;
-      row.push(cell); rows.push(row); row = []; cell = '';
-    } else cell += c;
-  }
-  if (cell !== '' || row.length) { row.push(cell); rows.push(row); }
-  return rows.filter((r) => r.some((x) => x.trim() !== ''));
-}
-function parseCren(v) {
-  const n = norm(v);
-  if (n === 'matin' || n === 'am matin') return 'matin';
-  if (n.startsWith('mi')) return 'mi';
-  if (n.startsWith('apres') || n === 'pm' || n === 'aprem') return 'am';
-  return null;
-}
-function parseDate(v) {
-  v = v.trim();
-  let m = v.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{2,4})$/);
-  const iso = m ? `${m[3].length === 2 ? '20' + m[3] : m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}` : /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null;
-  if (!iso) return null;
-  const d = new Date(iso + 'T12:00:00Z'); // date impossible (ex. 32/10) : Invalid Date, toISOString lèverait une exception
-  return !isNaN(d) && d.toISOString().slice(0, 10) === iso ? iso : null;
-}
+const I = window.OptiImport;
 function importCsv(text, name) {
   const rows = parseCsv(text);
   const rep = $('#csv-report');
@@ -789,20 +833,19 @@ function importCsv(text, name) {
     const get = (c) => (idx[c] >= 0 ? (r[idx[c]] || '').trim() : '');
     const line = k + 2; const pb = [];
     const date = parseDate(get('date')); if (!date) pb.push('date invalide « ' + get('date') + ' »');
-    let cp = get('code_postal').replace(/\s/g, ''); if (/^\d{4}$/.test(cp)) cp = '0' + cp;
-    if (!/^\d{5}$/.test(cp)) pb.push('code postal invalide « ' + get('code_postal') + ' »');
+    const cp = I.cpNormalise(get('code_postal')); if (!cp) pb.push('code postal invalide « ' + get('code_postal') + ' »');
     const ville = get('ville'); if (!ville) pb.push('ville vide');
     const type = codes.get(norm(get('intervention'))); if (!type) pb.push('code intervention inconnu « ' + get('intervention') + ' »');
-    const cren = parseCren(get('demi_journee')); if (!cren) pb.push('demi-journée invalide « ' + get('demi_journee') + ' »');
+    const cren = I.parseCren(get('demi_journee')); if (!cren) pb.push('demi-journée invalide « ' + get('demi_journee') + ' »');
     if (pb.length) { errs.push(`Ligne ${line} : ${pb.join(', ')}`); return; }
     state.rdv.push({ date, patient: get('patient') || 'Patient ligne ' + line, cp, ville, adresse: get('adresse'), type, cren, amdActuel: get('amd_actuel') });
     ok++;
   });
   logLines(name, errs, []);
-  J.log(ok ? (errs.length ? 'warn' : 'info') : 'crit', 'import', 'Fin de l’intégration', `« ${name} » : ${ok} RDV importé${ok > 1 ? 's' : ''}, ${errs.length} ligne${errs.length > 1 ? 's' : ''} ignorée${errs.length > 1 ? 's' : ''}`);
+  J.log(ok ? (errs.length ? 'warn' : 'info') : 'crit', 'import', 'Fin de l’intégration', `« ${name} » : ${ok} RDV importé${pl(ok)}, ${errs.length} ligne${pl(errs.length)} ignorée${pl(errs.length)}`);
   save();
   rep.hidden = false; rep.className = errs.length ? 'warn' : 'ok';
-  rep.innerHTML = `<b>${esc(name)}</b> : ${ok} RDV importé${ok > 1 ? 's' : ''}${errs.length ? `, ${errs.length} ligne${errs.length > 1 ? 's' : ''} ignorée${errs.length > 1 ? 's' : ''}` : ''}.`
+  rep.innerHTML = `<b>${esc(name)}</b> : ${ok} RDV importé${pl(ok)}${errs.length ? `, ${errs.length} ligne${pl(errs.length)} ignorée${pl(errs.length)}` : ''}.`
     + (errs.length ? '<ul>' + errs.slice(0, 30).map((x) => '<li>' + esc(x) + '</li>').join('') + (errs.length > 30 ? '<li>…</li>' : '') + '</ul>' : '');
   const dates = [...new Set(state.rdv.map((r) => r.date))];
   if (ok && !state.rdv.some((r) => r.date === state.date) && dates.length) state.date = dates.sort()[0];
@@ -815,32 +858,12 @@ function logLines(name, errs, warns) {
   errs.slice(0, LOG_LIGNES_MAX).forEach((x) => J.warn('import', 'Ligne ignorée', x, 'Fichier : ' + name));
   warns.slice(0, LOG_LIGNES_MAX).forEach((x) => J.warn('import', 'Donnée à vérifier', x, 'Fichier : ' + name));
   const over = Math.max(0, errs.length - LOG_LIGNES_MAX) + Math.max(0, warns.length - LOG_LIGNES_MAX);
-  if (over) J.warn('import', 'Journal tronqué', `${over} autre${over > 1 ? 's' : ''} anomalie${over > 1 ? 's' : ''} non détaillée${over > 1 ? 's' : ''} pour « ${name} »`);
+  if (over) J.warn('import', 'Journal tronqué', `${over} autre${pl(over)} anomalie${pl(over)} non détaillée${pl(over)} pour « ${name} »`);
 }
 
 let pendingAmd = [];
 /* ---------- import de l'export Isadom (requête RDV v7 : IdRdv;TypeBesoin;DateRdv;HeureDebut;…) ---------- */
 const ISADOM_REQ = ['idrdv', 'daterdv', 'cp', 'ville'];
-const hhmm = (v) => { const m = String(v || '').match(/(\d{1,2}):(\d{2})/); return m ? m[1].padStart(2, '0') + ':' + m[2] : ''; };
-function crenFromIsadom(label, hDeb, hFin) {
-  const n = norm(label);
-  if (n === 'matin') return 'matin';
-  if (n.startsWith('apres')) return 'am';
-  if (n.startsWith('journee')) return 'jour';
-  if (hDeb && hFin) { if (hm2s(hFin) <= hm2s('13:00')) return 'matin'; if (hm2s(hDeb) >= hm2s('12:00')) return 'am'; }
-  return 'jour';
-}
-/* coordonnées Isadom : W3W figées > lat/lon Isadom > W3W non figées ; sinon géocodage BAN à l'optimisation */
-function isadomGeo(get) {
-  const num = (v) => { const x = parseFloat(String(v).replace(',', '.')); return Number.isFinite(x) ? x : null; };
-  // coordonnées hors PACA / Corse ignorées (erreurs de saisie Isadom ou patient hors zone) -> géocodage par l'adresse
-  const pt = (la, lo) => { const lat = num(get(la)), lon = num(get(lo)); return lat != null && lon != null && inZone({ lat, lon }) ? { lat, lon } : null; };
-  const w = pt('w3wlat', 'w3wlon'), c = pt('lat', 'lon');
-  if (w && get('w3wfigee') === '1') return Object.assign(w, { label: 'What3Words figé (Isadom)', score: 1, src: 'w3w' });
-  if (c) return Object.assign(c, { label: 'Coordonnées Isadom' + (get('geofigee') === '1' ? ' (figées)' : ''), score: 1, src: 'isadom' });
-  if (w) return Object.assign(w, { label: 'What3Words (Isadom)', score: 1, src: 'w3w' });
-  return null;
-}
 function importIsadom(rows, head, name) {
   const rep = $('#csv-report'); const p = state.params;
   const col = (c) => head.indexOf(c);
@@ -865,17 +888,16 @@ function importIsadom(rows, head, name) {
     const line = k + 2; const pb = [];
     const id = get('idrdv'); if (!id) pb.push('IdRdv vide');
     const date = parseDate(get('daterdv').slice(0, 10)); if (!date) pb.push('date invalide « ' + get('daterdv') + ' »');
-    let cp = get('cp').replace(/\s/g, ''); if (/^\d{4}$/.test(cp)) cp = '0' + cp;
-    if (!/^\d{5}$/.test(cp)) pb.push('code postal invalide « ' + get('cp') + ' »');
+    const cp = I.cpNormalise(get('cp')); if (!cp) pb.push('code postal invalide « ' + get('cp') + ' »');
     const ville = get('ville'); if (!ville) pb.push('ville vide');
     if (pb.length) { errs.push(`Ligne ${line} : ${pb.join(', ')}`); return; }
-    const hDeb = hhmm(get('heuredebut')), hFin = hhmm(get('heurefin'));
+    const hDeb = I.hhmm(get('heuredebut')), hFin = I.hhmm(get('heurefin'));
     if (!hDeb || !hFin) warns.push(`RDV ${id} (${frDate(date)}) : heures non renseignées, créneau « Journée » appliqué`);
     const types = [...new Set(get('typevisite').split(',').map((s) => s.trim().toUpperCase()).filter(Boolean))];
     if (!types.length) { types.push('INCONNU'); warns.push(`RDV ${id} (${frDate(date)}) : aucun type de visite, durée par défaut appliquée`); }
     types.forEach(ensureType);
     const rd = {
-      idRdv: id, besoin: get('typebesoin'), date, hDeb, hFin, cren: crenFromIsadom(get('demijournee'), hDeb, hFin),
+      idRdv: id, besoin: get('typebesoin'), date, hDeb, hFin, cren: I.crenFromIsadom(get('demijournee'), hDeb, hFin),
       // NOM Prénom seul : le code patient a sa propre colonne ; patientLib() les réunit hors de la planification
       patient: [get('patientnom'), get('patientprenom')].filter(Boolean).join(' ') || 'Patient',
       patientCode: get('patientcode'), cp, ville,
@@ -883,19 +905,14 @@ function importIsadom(rows, head, name) {
       type: types[0], types, typeVisite: get('typevisite'), typePrestation: get('typeprestation'), infoRdv: get('infordv'), amdActuel: get('amdnom'), amdCode: get('amdcode'), antenne: get('antenne'), secteur: get('secteurlibelle'),
       acces: { tel1: get('telfixe'), tel2: get('telautre'), batiment: get('batiment'), etage: get('etage'), porte: get('porte'), interphone: get('interphone'), info: get('infoadresse') }
     };
-    const g = isadomGeo(get); if (g) rd.geo = g; else if (get('lat') || get('w3wlat')) geoRejet.push(id);
+    const g = I.isadomGeo(get, inZone); if (g) rd.geo = g; else if (get('lat') || get('w3wlat')) geoRejet.push(id);
     seen.set(id, rd); dates.add(date);
   });
   // fusion : un RDV déjà connu (même IdRdv) est remplacé ; un RDV Isadom d'une date couverte par le fichier
   // mais absent du fichier est retiré (annulé ou déplacé dans Isadom). Les RDV saisis à la main sont conservés.
-  let updated = 0, removed = 0;
-  const keep = state.rdv.filter((r) => {
-    if (r.idRdv && seen.has(r.idRdv)) { updated++; return false; }
-    if (r.idRdv && dates.has(r.date)) { removed++; return false; }
-    return true;
-  });
-  state.rdv = keep.concat([...seen.values()]);
-  const added = seen.size - updated;
+  const fusion = I.fusionIsadom(state.rdv, seen, dates);
+  state.rdv = fusion.rdv;
+  const { updated, removed, added } = fusion;
   // AMD : renseigne le code Isadom des AMD reconnus par leur nom ; liste ceux qui sont absents
   const amdSeen = new Map(); seen.forEach((rd) => { if (rd.amdCode) amdSeen.set(rd.amdCode, rd.amdActuel); });
   amdSeen.forEach((nom, code) => {
@@ -917,29 +934,29 @@ function importIsadom(rows, head, name) {
 
   const li = (x) => '<li>' + x + '</li>';
   const info = [
-    `${added} nouveau${added > 1 ? 'x' : ''}, ${updated} mis à jour, ${removed} retiré${removed > 1 ? 's' : ''} (absent${removed > 1 ? 's' : ''} du nouvel export)`,
-    `${seen.size - noGeo} localisé${seen.size - noGeo > 1 ? 's' : ''} par les coordonnées Isadom · ${noGeo} à géocoder par l'adresse`,
+    `${added} nouveau${added > 1 ? 'x' : ''}, ${updated} mis à jour, ${removed} retiré${pl(removed)} (absent${pl(removed)} du nouvel export)`,
+    `${seen.size - noGeo} localisé${pl(seen.size - noGeo)} par les coordonnées Isadom · ${noGeo} à géocoder par l'adresse`,
     geoRejet.length ? `${geoRejet.length} RDV avec des coordonnées Isadom hors PACA / Corse (erreur de saisie ou patient hors zone) : regéocodés par l'adresse, écartés si toujours hors zone — RDV ${geoRejet.map(esc).join(', ')}` : '',
     `${multi} RDV à plusieurs types de visite : durée = somme × ${p.multiCoef} %`,
     outScope ? `${outScope} RDV sur des antennes hors test (non optimisés tant que l'antenne n'est pas incluse dans les paramètres)` : '',
-    created.length ? `${created.length} type${created.length > 1 ? 's' : ''} de visite ajouté${created.length > 1 ? 's' : ''} aux paramètres : ${created.map((t) => `<code>${esc(t.code)}</code> ${t.duree} min`).join(', ')}` : '',
-    unknownAmd.length ? `${unknownAmd.length} AMD absent${unknownAmd.length > 1 ? 's' : ''} de la liste (leurs RDV ne sont pas pris en compte) : ${unknownAmd.map(([c, n]) => esc(n) + ' <span class="mono">(' + esc(c) + ')</span>').join(', ')} <button class="btn2" id="amd-from-isadom" type="button">Ajouter ${unknownAmd.length > 1 ? 'ces AMD' : 'cet AMD'}</button>` : ''
+    created.length ? `${created.length} type${pl(created.length)} de visite ajouté${pl(created.length)} aux paramètres : ${created.map((t) => `<code>${esc(t.code)}</code> ${t.duree} min`).join(', ')}` : '',
+    unknownAmd.length ? `${unknownAmd.length} AMD absent${pl(unknownAmd.length)} de la liste (leurs RDV ne sont pas pris en compte) : ${unknownAmd.map(([c, n]) => esc(n) + ' <span class="mono">(' + esc(c) + ')</span>').join(', ')} <button class="btn2" id="amd-from-isadom" type="button">Ajouter ${unknownAmd.length > 1 ? 'ces AMD' : 'cet AMD'}</button>` : ''
   ].filter(Boolean);
   const all = errs.concat(warns);
   logLines(name, errs, warns);
   created.forEach((t) => (t.connu
     ? J.info('import', 'Type de visite ajouté', `${t.code} · ${t.nom} : ${t.duree} min (durée métier Isadom)`, 'Fichier : ' + name)
     : J.warn('import', 'Type de visite inconnu ajouté', `${t.code} ajouté aux paramètres avec ${t.duree} min par défaut`, 'Durée à confirmer dans les paramètres · fichier : ' + name)));
-  if (unknownAmd.length) J.warn('import', 'AMD inconnus', `${unknownAmd.length} AMD absent${unknownAmd.length > 1 ? 's' : ''} de la liste : leurs RDV ne sont pas pris en compte`, unknownAmd.map(([c, n]) => `${n} (${c})`));
+  if (unknownAmd.length) J.warn('import', 'AMD inconnus', `${unknownAmd.length} AMD absent${pl(unknownAmd.length)} de la liste : leurs RDV ne sont pas pris en compte`, unknownAmd.map(([c, n]) => `${n} (${c})`));
   if (outScope) J.info('import', 'RDV hors test', `${outScope} RDV sur des antennes non incluses dans le test`);
   if (geoRejet.length) J.warn('import', 'Coordonnées hors zone', `${geoRejet.length} RDV avec des coordonnées Isadom hors PACA / Corse : regéocodés par l'adresse`, geoRejet.map((id) => 'RDV ' + id));
-  if (removed) J.info('import', 'RDV retirés', `${removed} RDV absent${removed > 1 ? 's' : ''} du nouvel export (annulés ou déplacés dans Isadom)`);
+  if (removed) J.info('import', 'RDV retirés', `${removed} RDV absent${pl(removed)} du nouvel export (annulés ou déplacés dans Isadom)`);
   J.log(seen.size ? (errs.length || warns.length ? 'warn' : 'info') : 'crit', 'import', 'Fin de l’intégration',
-    `« ${name} » : ${seen.size} RDV sur ${dates.size} jour${dates.size > 1 ? 's' : ''} · ${added} nouveau${added > 1 ? 'x' : ''}, ${updated} mis à jour, ${removed} retiré${removed > 1 ? 's' : ''}`,
+    `« ${name} » : ${seen.size} RDV sur ${dates.size} jour${pl(dates.size)} · ${added} nouveau${added > 1 ? 'x' : ''}, ${updated} mis à jour, ${removed} retiré${pl(removed)}`,
     { lignes_ignorees: errs.length, avertissements: warns.length, a_geocoder: noGeo, multi_types: multi });
   save();
   rep.hidden = false; rep.className = errs.length ? 'warn' : 'ok';
-  rep.innerHTML = `<b>${esc(name)}</b> (export Isadom) : ${seen.size} RDV importé${seen.size > 1 ? 's' : ''} sur ${dates.size} jour${dates.size > 1 ? 's' : ''}${errs.length ? `, ${errs.length} ligne${errs.length > 1 ? 's' : ''} ignorée${errs.length > 1 ? 's' : ''}` : ''}.`
+  rep.innerHTML = `<b>${esc(name)}</b> (export Isadom) : ${seen.size} RDV importé${pl(seen.size)} sur ${dates.size} jour${pl(dates.size)}${errs.length ? `, ${errs.length} ligne${pl(errs.length)} ignorée${pl(errs.length)}` : ''}.`
     + '<ul>' + info.map(li).join('') + '</ul>'
     + (all.length ? '<ul>' + all.slice(0, 30).map((x) => li(esc(x))).join('') + (all.length > 30 ? li('…') : '') + '</ul>' : '');
   if (seen.size && !state.rdv.some((r) => r.date === state.date)) state.date = [...dates].sort()[0];
@@ -947,13 +964,20 @@ function importIsadom(rows, head, name) {
   // localise tout de suite les RDV sans coordonnées Isadom, pour signaler dès l'import ceux qui seront écartés
   const toGeo = [...seen.values()].filter((rd) => aGeocoder(rd) && rdvPris(rd));
   if (toGeo.length) {
-    const st = document.createElement('p'); st.className = 'hint'; st.textContent = `Localisation de ${toGeo.length} adresse${toGeo.length > 1 ? 's' : ''} sans coordonnées Isadom…`;
+    const st = document.createElement('p'); st.className = 'hint'; st.textContent = `Localisation de ${toGeo.length} adresse${pl(toGeo.length)} sans coordonnées Isadom…`;
     rep.appendChild(st);
-    pool(toGeo, geocodeRdv).catch((e) => console.error(e)).then(() => {
-      const nKo = toGeo.filter((rd) => !inZone(rd.geo)).length;
-      st.textContent = `${toGeo.length} adresse${toGeo.length > 1 ? 's' : ''} localisée${toGeo.length > 1 ? 's' : ''} par géocodage` + (nKo ? ` · ${nKo} introuvable${nKo > 1 ? 's' : ''} ou hors zone : voir « RDV qui ne pourront pas être optimisés » en haut de page.` : '.');
-      save(); renderPlan();
-    });
+    pool(toGeo, geocodeRdv)
+      .then(() => {
+        const nKo = toGeo.filter((rd) => !inZone(rd.geo)).length;
+        st.textContent = `${toGeo.length} adresse${pl(toGeo.length)} localisée${pl(toGeo.length)} par géocodage` + (nKo ? ` · ${nKo} introuvable${pl(nKo)} ou hors zone : voir « RDV qui ne pourront pas être optimisés » à l'écran Planification.` : '.');
+      })
+      .catch((e) => {
+        console.error(e);
+        st.className = 'over';
+        st.textContent = `Géocodage interrompu : ${e.message}. Les adresses restantes seront cherchées au lancement de l'optimisation.`;
+        J.crit('import', 'Géocodage BAN interrompu', `« ${name} » : ${e.message}`);
+      })
+      .finally(() => { save(); renderPlan(); });
   }
 }
 
@@ -1035,7 +1059,7 @@ async function optimize() {
     if (badDep.length) throw new Error('Adresse introuvable pour : ' + [...new Set(badDep.map((a) => depotOf(a.depot).nom))].join(', ') + '. Corrigez-la dans les paramètres.');
     const jobsR = day.filter((r) => inZone(r.geo));
     const excluded = day.filter((r) => !inZone(r.geo)).map((r) => Object.assign(clone(r), { motif: motifGeo(r) }));
-    if (excluded.length) J.warn('optimisation', 'RDV écartés du calcul', `${excluded.length} RDV écarté${excluded.length > 1 ? 's' : ''} de l'optimisation du ${frDate(state.date)} (adresse introuvable, localisée à la commune seulement ou hors carte)`, excluded.map((r) => `${rdvRef(r)} · ${r.cp} ${r.ville} · ${r.motif}`));
+    if (excluded.length) J.warn('optimisation', 'RDV écartés du calcul', `${excluded.length} RDV écarté${pl(excluded.length)} de l'optimisation du ${frDate(state.date)} (adresse introuvable, localisée à la commune seulement ou hors carte)`, excluded.map((r) => `${rdvRef(r)} · ${r.cp} ${r.ville} · ${r.motif}`));
     const badType = jobsR.filter((r) => rdvTypes(r).some((c) => !typeOf(c)));
     if (badType.length) throw new Error('Type d’intervention inconnu pour ' + badType.map((r) => esc(patientLib(r))).join(', '));
 
@@ -1086,23 +1110,23 @@ async function optimize() {
         const bad = m ? jobsR.filter((r) => Math.abs(r.geo.lon - lon) < 1e-5 && Math.abs(r.geo.lat - lat) < 1e-5) : [];
         if (!bad.length || essai >= 20) throw e;
         bad.forEach((r) => { jobsR.splice(jobsR.indexOf(r), 1); excluded.push(Object.assign(clone(r), { motif: 'aucune route depuis la carte (point isolé ou hors zone)' })); });
-        alertMsg(msg, `Calcul des tournées… (${excluded.length} RDV écarté${excluded.length > 1 ? 's' : ''})`);
+        alertMsg(msg, `Calcul des tournées… (${excluded.length} RDV écarté${pl(excluded.length)})`);
       }
     }
 
     // l'AMD retenu (ou le motif d'impossibilité) accompagne chaque RDV du résultat
     const rdvR = jobsR.map((r) => { const m = amdDuRdv(r, amds); return Object.assign(clone(r), { amdIdx: m.idx, motifAmd: m.motif || '' }); });
     // plus de 2e calcul « répartition libre » : le résultat retenu (envoyé à MJ2) respecte les affectations Isadom
-    state.results[state.date] = { date: state.date, at: new Date().toISOString(), mode: 'amd-bloque', amds: clone(amds), rdv: rdvR, excluded: clone(excluded), horsAmd, res, resAct: null, cmp: null, force: force.reglages };
+    state.results[state.date] = { date: state.date, at: new Date().toISOString(), mode: 'amd-bloque', amds: clone(amds), rdv: rdvR, excluded: clone(excluded), horsAmd, res, force: force.reglages };
     save();
     const forces = amds.map((a, i) => ({ a, rg: force.reglages[i] })).filter((x) => OptiForce.estForce(x.rg));
-    if (forces.length) J.warn('optimisation', 'Placement forcé', `${forces.length} AMD saturé${forces.length > 1 ? 's' : ''} le ${frDate(state.date)} : tournée desserrée pour placer tous ses RDV`,
+    if (forces.length) J.warn('optimisation', 'Placement forcé', `${forces.length} AMD saturé${pl(forces.length)} le ${frDate(state.date)} : tournée desserrée pour placer tous ses RDV`,
       forces.map((x) => `${x.a.nom} · ${OptiForce.libelle(x.rg)}`));
-    J.info('optimisation', 'Optimisation terminée', `Journée du ${frDate(state.date)} : ${res.routes.length} AMD mobilisé${res.routes.length > 1 ? 's' : ''} · ${fmtKm(res.summary.distance)} · ${fmtDur(res.summary.duration)} de conduite`,
+    J.info('optimisation', 'Optimisation terminée', `Journée du ${frDate(state.date)} : ${res.routes.length} AMD mobilisé${pl(res.routes.length)} · ${fmtKm(res.summary.distance)} · ${fmtDur(res.summary.duration)} de conduite`,
       { mode: 'AMD bloqué (affectations Isadom conservées)', duree_calcul: ((Date.now() - t0) / 1000).toFixed(1) + ' s', rdv_planifies: jobsR.length - res.unassigned.length });
     if (res.unassigned.length) {
       const why = motifNonAffecte(state.results[state.date]);
-      J.warn('optimisation', 'RDV non tenus par leur AMD', `${res.unassigned.length} RDV ne peu${res.unassigned.length > 1 ? 'vent' : 't'} pas être tenu${res.unassigned.length > 1 ? 's' : ''} par leur AMD le ${frDate(state.date)} : à reprendre dans Isadom`,
+      J.warn('optimisation', 'RDV non tenus par leur AMD', `${res.unassigned.length} RDV ne peu${res.unassigned.length > 1 ? 'vent' : 't'} pas être tenu${pl(res.unassigned.length)} par leur AMD le ${frDate(state.date)} : à reprendre dans Isadom`,
         res.unassigned.map((u) => { const rd = rdvR[u.id - 1]; return `${rdvRef(rd)} · AMD ${rd.amdActuel || '—'} · ${why(rd)}`; }));
     }
     alertMsg(msg, '');
@@ -1115,24 +1139,12 @@ async function optimize() {
   } finally { if (btn) btn.disabled = false; }
 }
 async function callVroom(req) {
-  let r;
-  try {
-    r = await fetch('/vroom/', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(req) });
-  } catch (e) { throw new Error('VROOM ne répond pas. Vérifiez que les conteneurs tournent (docker compose ps).'); }
+  // 300 s : même délai que le proxy nginx (proxy_read_timeout)
+  const r = await fetchService('/vroom/', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(req) }, 300000, 'VROOM');
   const j = await r.json().catch(() => ({}));
   if (!r.ok || j.code !== 0) throw new Error('Erreur VROOM' + (j.error ? ' : ' + j.error : ' (HTTP ' + r.status + ')'));
   return j;
 }
-function summarize(res) {
-  return { distance: res.summary.distance || 0, duration: res.summary.duration || 0, routes: res.routes.length, unassigned: res.unassigned.length };
-}
-function sumRoutes(res, keepJobs) {
-  // indicateurs de la solution optimisée, restreints aux RDV qui ont un AMD actuel (comparaison à périmètre égal si tous en ont un)
-  const s = summarize(res);
-  s.unassigned = res.unassigned.filter((u) => keepJobs.has(u.id)).length;
-  return s;
-}
-
 /* ---------- 3. résultat ---------- */
 let mapR, layerR, mapT, layerT;
 function decodePolyline(str) {
@@ -1166,7 +1178,7 @@ function renderDayNav() {
 }
 function clearResult() {
   renderAlerteNonTenus(null, []);
-  $('#r-routes').innerHTML = ''; $('#r-compare').hidden = true; unRows = null; renderUnassigned();
+  $('#r-routes').innerHTML = ''; unRows = null; renderUnassigned();
   if (layerR) { layerR.remove(); layerR = null; }
 }
 function renderResult() {
@@ -1179,7 +1191,7 @@ function renderResult() {
   if (!R) {
     const n = state.rdv.filter((r) => r.date === state.date).length;
     $('#r-titre').textContent = 'Tournées · ' + longDate(state.date);
-    $('#r-sub').textContent = n ? `Journée non optimisée · ${n} RDV prévu${n > 1 ? 's' : ''}.` : 'Aucun RDV ce jour. Préparez la journée à l’écran Planification.';
+    $('#r-sub').textContent = n ? `Journée non optimisée · ${n} RDV prévu${pl(n)}.` : 'Aucun RDV ce jour. Préparez la journée à l’écran Planification.';
     $('#r-opt').hidden = !n;
     $('#r-ecartes').hidden = true;
     clearResult();
@@ -1194,23 +1206,7 @@ function renderResult() {
   $('#t-ecartes').innerHTML = ecartesRows(ex.map((rd) => Object.assign({}, rd, { motif: rd.motif || 'adresse introuvable' })));
   $('#r-titre').textContent = 'Tournées optimisées · ' + longDate(R.date);
   const used = res.routes.length;
-  $('#r-sub').textContent = `${R.rdv.length + R.excluded.length} RDV${R.excluded.length ? ` (dont ${R.excluded.length} écarté${R.excluded.length > 1 ? 's' : ''} du calcul)` : ''} · ${R.amds.length} AMD disponibles · ${used} AMD mobilisé${used > 1 ? 's' : ''} · ${fmtKm(res.summary.distance)} · ${fmtDur(res.summary.duration)} de conduite`;
-
-  // comparaison
-  if (R.cmp) {
-    const a = R.cmp.act, o = R.cmp.opt;
-    const pct = (x, y) => (x ? Math.round(((y - x) / x) * 100) : 0);
-    const sign = (n, unit) => (n > 0 ? '+ ' : n < 0 ? '− ' : '') + Math.abs(n) + unit;
-    const dMin = Math.round((o.duration - a.duration) / 60);
-    $('#t-compare').innerHTML = [
-      ['Kilomètres totaux', fmtKm(a.distance), fmtKm(o.distance), sign(pct(a.distance, o.distance), ' %')],
-      ['Temps de conduite total', fmtDur(a.duration), fmtDur(o.duration), sign(dMin, ' min')],
-      ['AMD mobilisés', a.routes, o.routes, sign(o.routes - a.routes, '')],
-      ['RDV impossibles à tenir', a.unassigned, o.unassigned, sign(o.unassigned - a.unassigned, '')]
-    ].map((r) => `<tr><td>${r[0]}</td><td class="num mono">${r[1]}</td><td class="num mono"><b>${r[2]}</b></td><td class="num mono">${r[3]}</td></tr>`).join('');
-    $('#r-compare').hidden = false;
-    if (R.cmp.n < R.cmp.total) $('#t-compare').insertAdjacentHTML('beforeend', `<tr><td colspan="4" class="hint">Comparaison partielle : ${R.cmp.n} RDV sur ${R.cmp.total} ont un AMD actuel reconnu. Les totaux optimisés portent sur tous les RDV.</td></tr>`);
-  } else $('#r-compare').hidden = true;
+  $('#r-sub').textContent = `${R.rdv.length + R.excluded.length} RDV${R.excluded.length ? ` (dont ${R.excluded.length} écarté${pl(R.excluded.length)} du calcul)` : ''} · ${R.amds.length} AMD disponibles · ${used} AMD mobilisé${pl(used)} · ${fmtKm(res.summary.distance)} · ${fmtDur(res.summary.duration)} de conduite`;
 
   // alerte : RDV que VROOM ne peut pas placer chez leur AMD (mode « AMD bloqué »)
   const nonTenus = res.unassigned.map((u) => R.rdv[u.id - 1]).filter(Boolean);
@@ -1223,7 +1219,7 @@ function renderResult() {
     const d = depotOf(a.depot) || { nom: a.depot };
     const dLib = esc(d.nom) + (a.depotHabituel ? ` <span class="hint">(en renfort, habituellement ${esc((depotOf(a.depotHabituel) || { nom: a.depotHabituel }).nom)})</span>` : '');
     const nNonTenus = nonTenus.filter((rd) => rd.amdIdx === i).length;
-    const nonTenusHtml = nNonTenus ? `<span class="over" title="RDV de cet AMD impossibles à placer : voir « RDV non affectés »">⚠ ${nNonTenus} non tenu${nNonTenus > 1 ? 's' : ''}</span>` : '';
+    const nonTenusHtml = nNonTenus ? `<span class="over" title="RDV de cet AMD impossibles à placer : voir « RDV non affectés »">⚠ ${nNonTenus} non tenu${pl(nNonTenus)}</span>` : '';
     const rg = (R.force || [])[i]; const forceLib = OptiForce.libelle(rg);
     const forceHtml = forceLib ? `<span class="over" title="Placement forcé : la tournée a été desserrée pour placer tous les RDV de cet AMD">⚙ ${esc(forceLib)}</span>` : '';
     if (!r) return `<section class="route"><div class="route-h"><div class="who"><span class="dot" style="background:${col}"></span><b>${esc(a.nom)}</b><span>${dLib}</span></div><div class="tot mono"><span>0 RDV</span>${nonTenusHtml}</div></div><div class="empty">${nNonTenus ? 'Aucun RDV ne tient dans la journée de cet AMD : voir « RDV non affectés ».' : 'Aucun RDV prévu pour cet AMD.'}</div></section>`;
@@ -1242,7 +1238,7 @@ function renderResult() {
       const inf = infoTitle(rd);
       return `<li class="pick" data-job="${s.job}" tabindex="0" title="Voir sur la carte"><span class="n" style="background:${col}">${n}</span>
         <span><b>${esc(patientLib(rd))}</b>${horsCren} <span class="w">· ${esc(rd.ville)} · </span>${rdvTypeHtml(rd)}<span class="w">${rd.adresse ? ' · ' + esc(rd.adresse) : ''}</span>${rdvVisitePrest(rd) ? `<div class="hint mono">Visite | Prestation : ${esc(rdvVisitePrest(rd))}</div>` : ''}${rd.infoRdv ? `<div class="hint">Info RDV : ${esc(rd.infoRdv)}</div>` : ''}${inf ? `<details class="infos"><summary>Infos d'accès</summary>${rdvInfos(rd).map(([k, v]) => `<div><span class="hint">${esc(k)}</span> ${esc(v)}</div>`).join('')}</details>` : ''}</span>
-        <span class="badge ${c.badge}" title="${esc(rdvWindowLabel(rd))}">${rd.hDeb ? esc(rd.hDeb + '–' + rd.hFin) : c.nom}</span></li>`;
+        <span class="badge ${c.badge}" title="${esc(rdvWindowLabel(rd))}">${esc(crenTexte(rd))}</span></li>`;
     }).join('');
     return `<section class="route"><div class="route-h"><div class="who"><span class="dot" style="background:${col}"></span><b>${esc(a.nom)}</b><span>${dLib}</span></div>
       <div class="tot mono"><span>${jobsN} RDV</span>${nonTenusHtml}${forceHtml}<span class="${kmOver ? 'over' : ''}">${fmtKm(r.distance)}${a.kmmax ? ' / ' + a.kmmax + ' km' : ''}</span><span class="${hOver ? 'over' : ''}">${fmtDur(r.duration)}${a.hmax ? ' / ' + a.hmax + ' h' : ''} conduite</span><button class="btn2 small" type="button" data-csv-amd="${i}" title="Exporter l'ordre de passage de ${esc(a.nom)} (CSV) pour le comparer à l'existant">CSV</button></div></div>
@@ -1267,8 +1263,8 @@ function renderAlerteNonTenus(R, nonTenus) {
   const parMotif = new Map();
   nonTenus.forEach((rd) => { const m = why(rd); parMotif.set(m, (parMotif.get(m) || 0) + 1); });
   const titre = R.mode === 'amd-bloque'
-    ? `⚠ ${n} RDV ne peu${n > 1 ? 'vent' : 't'} pas être tenu${n > 1 ? 's' : ''} par leur AMD Isadom`
-    : `⚠ ${n} RDV non affecté${n > 1 ? 's' : ''}`;
+    ? `⚠ ${n} RDV ne peu${n > 1 ? 'vent' : 't'} pas être tenu${pl(n)} par leur AMD Isadom`
+    : `⚠ ${n} RDV non affecté${pl(n)}`;
   el.className = 'msg err';
   el.innerHTML = `<b>${titre}</b> — ${n > 1 ? 'ils ne figurent' : 'il ne figure'} dans aucune tournée. À reprendre dans Isadom (changer d'AMD, de créneau ou de jour), puis rafraîchir et relancer l'optimisation.
     <div class="hint">Par AMD : ${[...parAmd].map(([k, v]) => `${esc(k)} (${v})`).join(' · ')}</div>
@@ -1276,10 +1272,6 @@ function renderAlerteNonTenus(R, nonTenus) {
     <a href="#r-unassigned" class="noprint" data-voir-non-tenus>Voir la liste détaillée</a>`;
   el.hidden = false;
 }
-document.addEventListener('click', (e) => {
-  const a = e.target.closest('[data-voir-non-tenus]'); if (!a) return;
-  e.preventDefault(); const t = $('#r-unassigned'); if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' });
-});
 /* motif d'un RDV que VROOM n'a pas pu placer (la réponse VROOM n'en donne pas) */
 const motifNonAffecte = (R) => (rd) => {
   const c = rdvWindow(rd);
@@ -1291,9 +1283,7 @@ const motifNonAffecte = (R) => (rd) => {
     if (!(w[0] < c[1] && w[1] > c[0])) return 'créneau hors des heures de travail de l’AMD';
     return 'tournée de l’AMD saturée : créneau, heures ou km max dépassés';
   }
-  // résultats calculés avant le mode « AMD bloqué » (répartition libre)
-  if (!R.amds.some((a) => { const w = vehicleWindow(a, state.params); return w[0] < c[1] && w[1] > c[0]; })) return 'aucun AMD disponible sur ce créneau';
-  return 'créneau, heures ou km max trop serrés';
+  return 'créneau, heures ou km max trop serrés'; // résultat calculé avant le mode « AMD bloqué » (répartition libre)
 };
 
 /* ---------- stats d'optimisation : compte rendu de la journée affichée ---------- */
@@ -1319,13 +1309,13 @@ function openStats() {
     <h3>RDV non planifiés par motif · ${S.nonPlanifies.total}</h3>
     ${S.nonPlanifies.parMotif.map((m) => `<details class="st-motif"><summary><b>${esc(m.motif)}</b> · ${m.n} RDV <span class="hint">(voir le détail)</span></summary>
       <div class="scroll"><table class="tbl"><thead><tr><th>N° RDV</th><th>Code Pat.</th><th>Patient</th><th>CP</th><th>Ville</th><th>Type de visite</th><th>Créneau</th><th>AMD prévu</th><th>Étape</th></tr></thead><tbody>
-        ${m.liste.map(({ rd, etape }) => `<tr><td class="mono gras">${esc(rd.idRdv || '')}</td><td class="mono">${esc(rd.patientCode || '')}</td><td>${esc(rd.patient)}</td><td class="mono">${esc(rd.cp)}</td><td>${esc(rd.ville || '?')}</td><td>${rdvTypeHtml(rd)}</td><td class="mono">${esc(rd.hDeb ? rd.hDeb + '–' + rd.hFin : crenOf(rd.cren).nom)}</td><td>${esc(rd.amdActuel)}</td><td class="hint">${esc(etape)}</td></tr>`).join('')}
+        ${m.liste.map(({ rd, etape }) => `<tr><td class="mono gras">${esc(rd.idRdv || '')}</td><td class="mono">${esc(rd.patientCode || '')}</td><td>${esc(rd.patient)}</td><td class="mono">${esc(rd.cp)}</td><td>${esc(rd.ville || '?')}</td><td>${rdvTypeHtml(rd)}</td><td class="mono">${esc(crenTexte(rd))}</td><td>${esc(rd.amdActuel)}</td><td class="hint">${esc(etape)}</td></tr>`).join('')}
       </tbody></table></div></details>`).join('') || '<p class="hint">Tous les RDV de la journée sont planifiés.</p>'}
     ${S.horsAmd.total ? `<h3>RDV sur des AMD non prévus · ${S.horsAmd.total}</h3>
     <p class="hint">Affectés dans Isadom à un AMD non retenu pour cette journée (inactif dans les paramètres, absent, inconnu ou non renseigné) : ils n'ont pas été optimisés. À reprendre dans Isadom ou en activant l'AMD.</p>
     ${S.horsAmd.parAmd.map((g) => `<details class="st-motif"><summary><b>${esc(g.amd || '(sans AMD)')}</b> · ${g.n} RDV · <span class="hint">${esc(g.motif)}</span></summary>
       <div class="scroll"><table class="tbl"><thead><tr><th>N° RDV</th><th>Code Pat.</th><th>Patient</th><th>CP</th><th>Ville</th><th>Type de visite</th><th>Créneau</th></tr></thead><tbody>
-        ${g.liste.map((rd) => `<tr><td class="mono gras">${esc(rd.idRdv || '')}</td><td class="mono">${esc(rd.patientCode || '')}</td><td>${esc(rd.patient)}</td><td class="mono">${esc(rd.cp)}</td><td>${esc(rd.ville || '?')}</td><td>${rdvTypeHtml(rd)}</td><td class="mono">${esc(rd.hDeb ? rd.hDeb + '–' + rd.hFin : crenOf(rd.cren).nom)}</td></tr>`).join('')}
+        ${g.liste.map((rd) => `<tr><td class="mono gras">${esc(rd.idRdv || '')}</td><td class="mono">${esc(rd.patientCode || '')}</td><td>${esc(rd.patient)}</td><td class="mono">${esc(rd.cp)}</td><td>${esc(rd.ville || '?')}</td><td>${rdvTypeHtml(rd)}</td><td class="mono">${esc(crenTexte(rd))}</td></tr>`).join('')}
       </tbody></table></div></details>`).join('')}` : ''}`;
   statsCour = { R, S };
   if (!dlg.open) dlg.showModal();
@@ -1335,9 +1325,8 @@ function openStats() {
 function exportStatsCsv() {
   if (!statsCour) return;
   const { R, S } = statsCour;
-  const q = (v) => '"' + String(v ?? '').replace(/"/g, '""') + '"';
-  const lines = [['date', 'id_rdv', 'code_patient', 'patient', 'code_postal', 'ville', 'types_visite', 'creneau', 'amd_prevu', 'statut', 'amd_optimise', 'ordre', 'heure_arrivee', 'motif', 'etape'].join(';')];
-  const ligne = (rd, suite) => lines.push([frDate(rd.date || R.date), rd.idRdv || '', rd.patientCode || '', rd.patient, rd.cp, rd.ville, rdvTypes(rd).join(' + '), rdvWindowLabel(rd), rd.amdActuel || '', ...suite].map(q).join(';'));
+  const lignes = [];
+  const ligne = (rd, suite) => lignes.push([frDate(rd.date || R.date), rd.idRdv || '', rd.patientCode || '', rd.patient, rd.cp, rd.ville, rdvTypes(rd).join(' + '), rdvWindowLabel(rd), rd.amdActuel || '', ...suite]);
   R.amds.forEach((a, i) => {
     const r = R.res.routes.find((x) => x.vehicle === i + 1); if (!r) return;
     r.steps.filter((s) => s.type === 'job').forEach((s, n) => ligne(R.rdv[s.job - 1], ['Planifié', a.nom, n + 1, s2hm(s.arrival), '', '']));
@@ -1345,8 +1334,8 @@ function exportStatsCsv() {
   S.nonPlanifies.parMotif.forEach((m) => m.liste.forEach(({ rd, etape }) => ligne(rd, ['Non planifié', '', '', '', m.motif, etape])));
   S.horsAmd.parAmd.forEach((g) => g.liste.forEach((rd) => ligne(rd, ['AMD non prévu', '', '', '', rd.motifAmd || g.motif, 'hors optimisation'])));
   const nom = `rdv_${R.date}.csv`;
-  download(nom, '﻿' + lines.join('\r\n'), 'text/csv;charset=utf-8');
-  J.info('action', 'Export des RDV du compte rendu', `${nom} · ${lines.length - 1} RDV`);
+  downloadCsv(nom, ['date', 'id_rdv', 'code_patient', 'patient', 'code_postal', 'ville', 'types_visite', 'creneau', 'amd_prevu', 'statut', 'amd_optimise', 'ordre', 'heure_arrivee', 'motif', 'etape'], lignes);
+  J.info('action', 'Export des RDV du compte rendu', `${nom} · ${lignes.length} RDV`);
 }
 
 let unRows = null;
@@ -1376,21 +1365,18 @@ function renderUnassigned() {
   $('#t-unassigned').innerHTML = sorted.map(({ rd, job, why }) => {
     const c = crenOf(rd.cren);
     return `<tr${job ? ` class="pick" data-job="${job}" tabindex="0" title="Voir sur la carte"` : ''}><td class="mono">${esc(frDate(rd.date))}</td><td><b>${esc(patientLib(rd))}</b></td><td class="mono">${esc(rd.cp)}</td><td>${esc(rd.ville || '?')}</td><td>${esc(rd.adresse)}</td>
-      <td>${rdvTypeHtml(rd)}</td><td><span class="badge ${c.badge}" title="${esc(rdvWindowLabel(rd))}">${rd.hDeb ? esc(rd.hDeb + '–' + rd.hFin) : c.nom}</span></td><td>${esc(rd.amdActuel)}</td><td class="hint">${esc(why)}</td></tr>`;
+      <td>${rdvTypeHtml(rd)}</td><td><span class="badge ${c.badge}" title="${esc(rdvWindowLabel(rd))}">${esc(crenTexte(rd))}</span></td><td>${esc(rd.amdActuel)}</td><td class="hint">${esc(why)}</td></tr>`;
   }).join('');
   if (pickedJob != null) $$(`#t-unassigned .pick[data-job="${pickedJob}"]`).forEach((x) => x.classList.add('sel'));
 }
-document.addEventListener('click', (e) => {
-  const b = e.target.closest('#r-unassigned [data-sort]'); if (!b) return;
-  if (unSort.key === b.dataset.sort) unSort.dir = -unSort.dir; else { unSort.key = b.dataset.sort; unSort.dir = 1; }
-  renderUnassigned();
-});
+/* fond de carte OpenStreetMap (l'origine du site est envoyée, comme l'exige sa politique d'usage) */
+const fondOsm = (map) => L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18, attribution: '© OpenStreetMap', referrerPolicy: 'strict-origin-when-cross-origin' }).addTo(map);
 function pinIcon(txt, col, dep) {
   return L.divIcon({ className: '', html: `<div class="pin ${dep ? 'dep' : ''}" style="${dep ? '' : 'background:' + col}">${txt}</div>`, iconSize: [26, 26], iconAnchor: [13, 13] });
 }
 function drawResultMap(R) {
   if (typeof L === 'undefined') { $('#map-result').innerHTML = '<p class="empty">Carte indisponible (Leaflet non chargé).</p>'; return; }
-  if (!mapR) { mapR = L.map('map-result'); L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18, attribution: '© OpenStreetMap', referrerPolicy: 'strict-origin-when-cross-origin' }).addTo(mapR); }
+  if (!mapR) { mapR = L.map('map-result'); fondOsm(mapR); }
   if (layerR) layerR.remove();
   layerR = L.featureGroup().addTo(mapR);
   markersR = {}; linesR = {}; jobVehR = {}; pickedJob = null; hoveredJob = null;
@@ -1466,9 +1452,6 @@ function hoverJob(job, fromMap) {
   if (m && m.getElement()) m.getElement().firstElementChild.classList.add('hov');
   if (fromMap) appBus.dispatchEvent(new CustomEvent('hover', { detail: { job } }));
 }
-document.addEventListener('click', (e) => {
-  const row = e.target.closest('#v-resultat .pick'); if (row) pickJob(Number(row.dataset.job));
-});
 document.addEventListener('keydown', (e) => {
   const row = e.target.closest && e.target.closest('#v-resultat .pick');
   if (row && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); pickJob(Number(row.dataset.job)); }
@@ -1478,48 +1461,42 @@ function download(name, content, type) {
   const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click();
   setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 500);
 }
+const downloadCsv = (nom, entete, lignes) => download(nom, T.toCsv(entete, lignes), 'text/csv;charset=utf-8');
 function exportCsv() {
   const R = resultatDuJour(); if (!R) return;
-  const q = (v) => '"' + String(v ?? '').replace(/"/g, '""') + '"';
-  const lines = [['date', 'amd', 'ordre', 'heure_arrivee', 'id_rdv', 'patient', 'code_postal', 'ville', 'adresse', 'intervention', 'type_visite', 'prestation', 'creneau', 'attente_min', 'infos_acces'].join(';')];
+  // même description du RDV pour les lignes planifiées, écartées et non affectées
+  const lignes = [];
+  const ligne = (rd, amd, ordre, heure, attente) => lignes.push([frDate(R.date), amd, ordre, heure, rd.idRdv || '', patientLib(rd), rd.cp, rd.ville, rd.adresse, rdvTypeNom(rd), rd.typeVisite || '', rd.typePrestation || '', rdvWindowLabel(rd), attente, infoTitle(rd).replace(/\n/g, ' | ')]);
   R.amds.forEach((a, i) => {
-    const r = R.res.routes.find((x) => x.vehicle === i + 1); if (!r) return; let n = 0;
-    r.steps.filter((s) => s.type === 'job').forEach((s) => {
-      n++; const rd = R.rdv[s.job - 1];
-      lines.push([frDate(R.date), a.nom, n, s2hm(s.arrival), rd.idRdv || '', patientLib(rd), rd.cp, rd.ville, rd.adresse, rdvTypeNom(rd), rd.typeVisite || '', rd.typePrestation || '', rdvWindowLabel(rd), Math.round((s.waiting_time || 0) / 60), infoTitle(rd).replace(/\n/g, ' | ')].map(q).join(';'));
-    });
+    const r = R.res.routes.find((x) => x.vehicle === i + 1); if (!r) return;
+    r.steps.filter((s) => s.type === 'job').forEach((s, n) => ligne(R.rdv[s.job - 1], a.nom, n + 1, s2hm(s.arrival), Math.round((s.waiting_time || 0) / 60)));
   });
-  (R.excluded || []).forEach((rd) => { lines.push([frDate(R.date), 'ÉCARTÉ : ' + (rd.motif || 'adresse introuvable'), '', '', rd.idRdv || '', patientLib(rd), rd.cp, rd.ville, rd.adresse, rdvTypeNom(rd), rd.typeVisite || '', rd.typePrestation || '', rdvWindowLabel(rd), '', infoTitle(rd).replace(/\n/g, ' | ')].map(q).join(';')); });
-  R.res.unassigned.forEach((u) => { const rd = R.rdv[u.id - 1]; lines.push([frDate(R.date), 'NON AFFECTÉ', '', '', rd.idRdv || '', patientLib(rd), rd.cp, rd.ville, rd.adresse, rdvTypeNom(rd), rd.typeVisite || '', rd.typePrestation || '', rdvWindowLabel(rd), '', infoTitle(rd).replace(/\n/g, ' | ')].map(q).join(';')); });
-  download(`tournees_${R.date}.csv`, '﻿' + lines.join('\r\n'), 'text/csv;charset=utf-8');
-  J.info('action', 'Export des tournées', `tournees_${R.date}.csv · ${lines.length - 1} ligne${lines.length > 2 ? 's' : ''}`);
+  (R.excluded || []).forEach((rd) => ligne(rd, 'ÉCARTÉ : ' + (rd.motif || 'adresse introuvable'), '', '', ''));
+  R.res.unassigned.forEach((u) => ligne(R.rdv[u.id - 1], 'NON AFFECTÉ', '', '', ''));
+  const nom = `tournees_${R.date}.csv`;
+  downloadCsv(nom, ['date', 'amd', 'ordre', 'heure_arrivee', 'id_rdv', 'patient', 'code_postal', 'ville', 'adresse', 'intervention', 'type_visite', 'prestation', 'creneau', 'attente_min', 'infos_acces'], lignes);
+  J.info('action', 'Export des tournées', `${nom} · ${lignes.length} ligne${pl(lignes.length)}`);
 }
 
 /* export de la tournée d'un seul AMD : ordre de passage, code et nom des patients, pour comparer à l'existant */
 function exportCsvAmd(i) {
   const R = resultatDuJour(); const a = R && R.amds[i]; if (!a) return;
   const r = R.res.routes.find((x) => x.vehicle === i + 1); if (!r) return;
-  const q = (v) => '"' + String(v ?? '').replace(/"/g, '""') + '"';
-  const lines = [['date', 'amd', 'ordre', 'heure_arrivee', 'code_patient', 'patient', 'id_rdv', 'type_visite', 'prestation'].join(';')];
-  r.steps.filter((s) => s.type === 'job').forEach((s, n) => {
+  const lignes = r.steps.filter((s) => s.type === 'job').map((s, n) => {
     const rd = R.rdv[s.job - 1];
-    lines.push([frDate(R.date), a.nom, n + 1, s2hm(s.arrival), rd.patientCode || '', rd.patient, rd.idRdv || '', rd.typeVisite || '', rd.typePrestation || ''].map(q).join(';'));
+    return [frDate(R.date), a.nom, n + 1, s2hm(s.arrival), rd.patientCode || '', rd.patient, rd.idRdv || '', rd.typeVisite || '', rd.typePrestation || ''];
   });
-  const nom = `tournee_${R.date}_${String(a.nom).normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Za-z0-9]+/g, '_').replace(/^_|_$/g, '')}.csv`;
-  download(nom, '﻿' + lines.join('\r\n'), 'text/csv;charset=utf-8');
-  J.info('action', "Export de la tournée d'un AMD", `${nom} · ${lines.length - 1} RDV`);
+  const nom = `tournee_${R.date}_${T.sansAccents(a.nom).replace(/[^A-Za-z0-9]+/g, '_').replace(/^_|_$/g, '')}.csv`;
+  downloadCsv(nom, ['date', 'amd', 'ordre', 'heure_arrivee', 'code_patient', 'patient', 'id_rdv', 'type_visite', 'prestation'], lignes);
+  J.info('action', "Export de la tournée d'un AMD", `${nom} · ${lignes.length} RDV`);
 }
-document.addEventListener('click', (e) => {
-  const b = e.target.closest('#r-routes [data-csv-amd]'); if (b) exportCsvAmd(Number(b.dataset.csvAmd));
-});
-
 /* ---------- test trajet ---------- */
 let trajetReady = false;
 function initTrajet() {
   $('#dl-depots').innerHTML = state.params.depots.map((d) => `<option value="${esc(d.nom)}"></option>`).join('');
   if (typeof L !== 'undefined' && !mapT) {
     mapT = L.map('map-trajet').setView([43.6, 5.8], 8);
-    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18, attribution: '© OpenStreetMap', referrerPolicy: 'strict-origin-when-cross-origin' }).addTo(mapT);
+    fondOsm(mapT);
   }
   setTimeout(() => mapT && mapT.invalidateSize(), 50);
   if (trajetReady) return; trajetReady = true;
@@ -1540,8 +1517,8 @@ async function calcTrajet() {
   try {
     const a = await placeOf($('#tr-dep').value), b = await placeOf($('#tr-arr').value);
     save();
-    const r = await fetch(`/osrm/route/v1/driving/${a.lon},${a.lat};${b.lon},${b.lat}?overview=full&geometries=geojson`);
-    const j = await r.json();
+    const r = await fetchService(`/osrm/route/v1/driving/${a.lon},${a.lat};${b.lon},${b.lat}?overview=full&geometries=geojson`, {}, 20000, 'OSRM');
+    const j = await r.json().catch(() => ({ code: 'HTTP ' + r.status }));
     if (j.code !== 'Ok') throw new Error('OSRM : ' + (j.message || j.code));
     const rt = j.routes[0]; const coef = 1 + (Number(state.params.coef) || 0) / 100;
     const maj = rt.duration * coef; lastTrajetMin = maj / 60;
@@ -1598,5 +1575,21 @@ $('#r-stats').addEventListener('click', openStats);
 $('#st-close').addEventListener('click', () => $('#dlg-stats').close());
 $('#st-csv').addEventListener('click', exportStatsCsv);
 $('#r-print').addEventListener('click', () => { J.info('action', 'Impression des feuilles de route', 'Journée du ' + frDate(state.date)); window.print(); });
+/* clics délégués sur toute la page : un seul écouteur, une entrée par type d'élément (le premier qui correspond l'emporte) */
+const CLICS = [
+  // boutons d'import : un <input type="file"> caché n'est pas atteignable au clavier, le bouton l'ouvre
+  ['[data-file]', (b) => $('#' + b.dataset.file).click()],
+  ['[data-voir-non-tenus]', (a, e) => { e.preventDefault(); $('#r-unassigned').scrollIntoView({ behavior: 'smooth', block: 'start' }); }],
+  ['#r-unassigned [data-sort]', (b) => { if (unSort.key === b.dataset.sort) unSort.dir = -unSort.dir; else { unSort.key = b.dataset.sort; unSort.dir = 1; } renderUnassigned(); }],
+  ['#r-routes [data-csv-amd]', (b) => exportCsvAmd(Number(b.dataset.csvAmd))],
+  ['#v-resultat .pick', (row) => pickJob(Number(row.dataset.job))]
+];
+document.addEventListener('click', (e) => {
+  for (const [sel, fn] of CLICS) { const el = e.target.closest(sel); if (el) { fn(el, e); return; } }
+});
+// les écritures sont regroupées (save) : tout est écrit avant de quitter ou de masquer la page
+window.addEventListener('pagehide', saveNow);
+document.addEventListener('visibilitychange', () => { if (document.hidden) saveNow(); });
+$$('.duree-defaut').forEach((x) => { x.textContent = DUREE_TYPE_DEFAUT; });
 window.addEventListener('hashchange', route);
 route();

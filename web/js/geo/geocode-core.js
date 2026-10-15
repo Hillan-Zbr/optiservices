@@ -18,10 +18,11 @@
    Retourne { lon, lat, label, score, precision: 'adresse' | 'rue' | 'commune', etape }, ou
    { none: true, horsZone: true, label } si seul un point hors carte a été trouvé, ou null. */
 (function (root, factory) {
-  const api = factory();
+  const T = typeof module === 'object' && module.exports ? require('../commun/texte-core.js') : root.OptiTexte;
+  const api = factory(T);
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.OptiGeocode = api;
-}(typeof window !== 'undefined' ? window : globalThis, function () {
+}(typeof window !== 'undefined' ? window : globalThis, function (T) {
   const SEUIL_BON = 0.6;   // au-dessus : on arrête de chercher
   const SEUIL_MIN = 0.45;  // en dessous : résultat rejeté (souvent une rue au hasard de la commune)
 
@@ -54,7 +55,7 @@
   const VIDES = new Set(['LE', 'LA', 'LES', 'L', 'D', 'DE', 'DU', 'DES', 'ET', 'AU', 'AUX', 'EN', 'A', 'SUR', 'SOUS']);
   const LIEU_DIT = new Set(['LD', 'LIEUDIT']);
 
-  const maj = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase()
+  const maj = (s) => T.sansAccents(s || '').toUpperCase()
     .replace(/LIEU[\s-]*DIT/g, 'LIEUDIT').replace(/[^A-Z0-9]+/g, ' ').trim();
   const estNumero = (t) => /^\d+[A-Z]?$/.test(t);
   /* mots en majuscules, abréviations développées (« R » ne vaut « RUE » qu'après un numéro) */

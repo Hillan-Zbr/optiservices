@@ -1,7 +1,11 @@
 /* Tests de l'import CSV des AMD (sans DOM) — lancer : node --test tests/ */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { createRequire } from 'node:module';
 import { planAmdImport, findDepot, parseDispo } from '../web/js/amd/amd-csv.js';
+
+// dans le navigateur, texte-core.js est chargé avant le module
+globalThis.OptiTexte = createRequire(import.meta.url)('../web/js/commun/texte-core.js');
 
 const params = {
   hmax: 5, kmmax: 250,

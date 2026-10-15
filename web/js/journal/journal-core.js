@@ -6,10 +6,11 @@
    Catégories : import (intégration CSV), action (actions utilisateur), parametres, optimisation, systeme.
    Persistance : localStorage (clé dédiée, distincte des données métier), rotation à MAX_ENTREES. */
 (function (root, factory) {
-  const api = factory(root);
+  const T = typeof module === 'object' && module.exports ? require('../commun/texte-core.js') : root.OptiTexte;
+  const api = factory(root, T);
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.OptiJournal = api;
-}(typeof window !== 'undefined' ? window : globalThis, function (root) {
+}(typeof window !== 'undefined' ? window : globalThis, function (root, T) {
   'use strict';
 
   const KEY = 'optiservices.journal.v1';
@@ -80,7 +81,7 @@
 
   /* filtre : { niveaux: ['warn','crit'], categorie, du: 'AAAA-MM-JJ', au: 'AAAA-MM-JJ', texte } — dates en heure locale */
   const localDay = (iso) => { const d = new Date(iso); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
-  const fold = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  const fold = (s) => T.sansAccents(s || '').toLowerCase();
   function filter(list, f = {}) {
     const niv = f.niveaux && f.niveaux.length ? new Set(f.niveaux) : null;
     const txt = fold(f.texte).trim();
@@ -100,10 +101,8 @@
     return `${two(d.getDate())}/${two(d.getMonth() + 1)}/${d.getFullYear()} ${two(d.getHours())}:${two(d.getMinutes())}:${two(d.getSeconds())}`;
   }
   function toCsv(list) {
-    const q = (v) => '"' + String(v ?? '').replace(/"/g, '""').replace(/\r?\n/g, ' ') + '"';
-    const head = ['horodatage', 'niveau', 'categorie', 'action', 'message', 'details'].join(';');
-    const rows = list.map((e) => [localStamp(e.ts), e.niveau.toUpperCase(), CATEGORIES[e.categorie] || e.categorie, e.action, e.message, e.details].map(q).join(';'));
-    return '﻿' + [head].concat(rows).join('\r\n');
+    return T.toCsv(['horodatage', 'niveau', 'categorie', 'action', 'message', 'details'],
+      list.map((e) => [localStamp(e.ts), e.niveau.toUpperCase(), CATEGORIES[e.categorie] || e.categorie, e.action, e.message, e.details]));
   }
 
   /* entrées warn/crit non encore vues (pastille du bouton Aide) */

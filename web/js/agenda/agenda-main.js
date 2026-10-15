@@ -44,6 +44,8 @@ function trajetsPour(R) {
   let c = trajetsCache.get(R.at);
   if (c) return c;
   c = { etat: 'attente' }; trajetsCache.set(R.at, c);
+  // une entrée par optimisation : on ne garde que les plus récentes
+  if (trajetsCache.size > 5) trajetsCache.delete(trajetsCache.keys().next().value);
   const antennes = R.amds.map((a, i) => ({ key: 'A' + (i + 1), d: app.depotOf(a.depot) }))
     .filter((x) => x.d && x.d.geo && !x.d.geo.none).map((x) => ({ key: x.key, lonlat: [x.d.geo.lon, x.d.geo.lat] }));
   const points = R.res.unassigned.map((u) => ({ key: 'P' + u.id, rd: R.rdv[u.id - 1] }))

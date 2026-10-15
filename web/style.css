@@ -35,7 +35,11 @@ h2{margin:0;font-size:18px}
 .actions{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end}
 .row-between{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
 .form-row{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end}
-.grow{flex:1 1 260px;min-width:0}.w160{width:160px}
+.grow{flex:1 1 260px;min-width:0}
+/* largeurs de colonnes et de champs (au lieu de styles en ligne) */
+.w88{width:88px}.w90{width:90px}.w100{width:100px}.w110{width:110px}.w130{width:130px}.w140{width:140px}.w150{width:150px}.w160{width:160px}.w170{width:170px}.mw240{min-width:240px}
+.danger-txt{color:var(--danger);font-size:14px}
+.confirm-inline{display:inline-flex;gap:8px;align-items:center;flex-wrap:wrap}
 
 .card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:20px;display:flex;flex-direction:column;gap:14px;min-width:0}
 .grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px}
@@ -174,7 +178,7 @@ details.infos div{white-space:pre-wrap}
 }
 @media print{
   body{background:#fff;font-size:12pt}
-  .top,.noprint,.tabs,#v-parametres,#v-parametres-rdv,#v-planification,#v-trajet,#r-compare,#r-unassigned{display:none!important}
+  .top,.noprint,.tabs,#v-parametres,#v-parametres-rdv,#v-planification,#v-trajet,#r-unassigned{display:none!important}
   main{padding:0}
   .split,.col-wide{display:block}
   .route{margin-bottom:16pt;page-break-after:always;border:1px solid #999}

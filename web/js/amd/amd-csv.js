@@ -26,27 +26,9 @@ const ALIASES = {
   kmmax: ['km_max', 'km_maxi', 'kmmax', 'km']
 };
 
-export const norm = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-
-export function parseCsv(text) {
-  text = String(text).replace(/^﻿/, '');
-  const first = text.split(/\r?\n/)[0] || '';
-  const sep = (first.match(/;/g) || []).length >= (first.match(/,/g) || []).length ? ';' : ',';
-  const rows = []; let row = []; let cell = ''; let q = false;
-  for (let i = 0; i < text.length; i++) {
-    const c = text[i];
-    if (q) {
-      if (c === '"' && text[i + 1] === '"') { cell += '"'; i++; } else if (c === '"') q = false; else cell += c;
-    } else if (c === '"') q = true;
-    else if (c === sep) { row.push(cell); cell = ''; }
-    else if (c === '\n' || c === '\r') {
-      if (c === '\r' && text[i + 1] === '\n') i++;
-      row.push(cell); rows.push(row); row = []; cell = '';
-    } else cell += c;
-  }
-  if (cell !== '' || row.length) { row.push(cell); rows.push(row); }
-  return rows.filter((r) => r.some((x) => x.trim() !== ''));
-}
+/* utilitaires partagés : js/commun/texte-core.js (window.OptiTexte), lu à l'appel */
+export const norm = (s) => globalThis.OptiTexte.norm(s);
+export const parseCsv = (text) => globalThis.OptiTexte.parseCsv(text);
 
 export function parseDispo(v) {
   const n = norm(v);

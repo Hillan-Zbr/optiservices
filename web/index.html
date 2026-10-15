@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Optiservices · Tournées AMD</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="preload" href="vendor/fonts/ibm-plex-sans-latin-400.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="vendor/fonts/fonts.css">
 <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
 <link rel="stylesheet" href="style.css">
 <link rel="stylesheet" href="css/agenda.css">
@@ -37,7 +37,7 @@
     <div class="actions">
       <a class="btn2" href="#trajet">Test : trajet entre deux villes</a>
       <button class="btn2" id="cfg-export" type="button">Exporter la configuration</button>
-      <label class="btn2" for="cfg-import">Importer une configuration</label>
+      <button class="btn2" type="button" data-file="cfg-import">Importer une configuration</button>
       <input type="file" id="cfg-import" accept=".json" hidden>
       <span class="saved" hidden>Enregistré</span>
     </div>
@@ -47,13 +47,13 @@
     <div class="row-between">
       <h2>AMD disponibles <span class="count" id="c-amd"></span></h2>
       <div class="actions">
-        <label class="btn2" for="amd-csv-file">Importer des AMD (CSV)</label>
+        <button class="btn2" type="button" data-file="amd-csv-file">Importer des AMD (CSV)</button>
         <input type="file" id="amd-csv-file" accept=".csv,text/csv" hidden>
         <button class="btn2" id="amd-add" type="button">+ Ajouter un AMD</button>
-        <span id="amd-del-zone"><button class="btn2 danger" id="amd-clear" type="button">Tout supprimer</button></span>
+        <span id="amd-del-zone"><button class="btn2 danger" type="button" data-suppr="amd">Tout supprimer</button></span>
       </div>
     </div>
-    <div id="amd-report" hidden></div>
+    <div id="amd-report" role="status" aria-live="polite" hidden></div>
     <div class="scroll">
       <table class="tbl">
         <thead><tr class="dd-head"><th>Actif<button class="dd-btn" type="button" data-dd-t="amd" data-dd="actif" title="Filtrer ou trier" aria-label="Filtrer ou trier la colonne Actif" aria-haspopup="true">▾</button></th><th>Code Isadom<button class="dd-btn" type="button" data-dd-t="amd" data-dd="code" title="Filtrer ou trier" aria-label="Filtrer ou trier la colonne Code Isadom" aria-haspopup="true">▾</button></th><th>Nom<button class="dd-btn" type="button" data-dd-t="amd" data-dd="nom" title="Filtrer ou trier" aria-label="Filtrer ou trier la colonne Nom" aria-haspopup="true">▾</button></th><th>Point de départ<button class="dd-btn" type="button" data-dd-t="amd" data-dd="depot" title="Filtrer ou trier" aria-label="Filtrer ou trier la colonne Point de départ" aria-haspopup="true">▾</button></th><th>Disponible<button class="dd-btn" type="button" data-dd-t="amd" data-dd="dispo" title="Filtrer ou trier" aria-label="Filtrer ou trier la colonne Disponible" aria-haspopup="true">▾</button></th><th>Heures max<button class="dd-btn" type="button" data-dd-t="amd" data-dd="hmax" title="Filtrer ou trier" aria-label="Filtrer ou trier la colonne Heures max" aria-haspopup="true">▾</button></th><th>Km max<button class="dd-btn" type="button" data-dd-t="amd" data-dd="kmmax" title="Filtrer ou trier" aria-label="Filtrer ou trier la colonne Km max" aria-haspopup="true">▾</button></th><th></th></tr></thead>
@@ -110,14 +110,14 @@ AMD02;MARTIN Julie;ARARD 04/05;matin;5;250</pre>
     <div class="row-between">
       <h2>Rendez-vous patients <span class="count" id="c-rdv"></span></h2>
       <div class="actions">
-        <label class="btn2" for="csv-file">Importer des RDV (CSV)</label>
+        <button class="btn2" type="button" data-file="csv-file">Importer des RDV (CSV)</button>
         <input type="file" id="csv-file" accept=".csv,text/csv" hidden>
         <button class="btn2" id="rdv-add" type="button">+ Ajouter un RDV</button>
         <button class="btn2" id="rdv-demo" type="button">Charger l'exemple</button>
-        <span id="del-zone"><button class="btn2 danger" id="rdv-clear" type="button">Tout supprimer</button></span>
+        <span id="del-zone"><button class="btn2 danger" type="button" data-suppr="rdv">Tout supprimer</button></span>
       </div>
     </div>
-    <div id="csv-report" hidden></div>
+    <div id="csv-report" role="status" aria-live="polite" hidden></div>
     <div class="scroll">
       <table class="tbl">
         <thead><tr class="dd-head"><th>Date<button class="dd-btn" type="button" data-dd="date" title="Filtrer par valeur" aria-label="Filtrer la colonne Date par valeur" aria-haspopup="true">▾</button></th><th>Code Pat.<button class="dd-btn" type="button" data-dd="code" title="Filtrer par valeur" aria-label="Filtrer la colonne Code Pat. par valeur" aria-haspopup="true">▾</button></th><th>Patient<button class="dd-btn" type="button" data-dd="patient" title="Filtrer par valeur" aria-label="Filtrer la colonne Patient par valeur" aria-haspopup="true">▾</button></th><th>CP<button class="dd-btn" type="button" data-dd="cp" title="Filtrer par valeur" aria-label="Filtrer la colonne CP par valeur" aria-haspopup="true">▾</button></th><th>Ville<button class="dd-btn" type="button" data-dd="ville" title="Filtrer par valeur" aria-label="Filtrer la colonne Ville par valeur" aria-haspopup="true">▾</button></th><th>Adresse<button class="dd-btn" type="button" data-dd="adresse" title="Filtrer par valeur" aria-label="Filtrer la colonne Adresse par valeur" aria-haspopup="true">▾</button></th><th>Intervention<button class="dd-btn" type="button" data-dd="type" title="Filtrer par valeur" aria-label="Filtrer la colonne Intervention par valeur" aria-haspopup="true">▾</button></th><th>Visite | Prestation<button class="dd-btn" type="button" data-dd="prest" title="Filtrer par valeur" aria-label="Filtrer la colonne Visite | Prestation par valeur" aria-haspopup="true">▾</button></th><th>Demi-journée<button class="dd-btn" type="button" data-dd="cren" title="Filtrer par valeur" aria-label="Filtrer la colonne Demi-journée par valeur" aria-haspopup="true">▾</button></th><th>AMD prévu aujourd'hui<button class="dd-btn" type="button" data-dd="amd" title="Filtrer par valeur" aria-label="Filtrer la colonne AMD prévu aujourd'hui par valeur" aria-haspopup="true">▾</button></th><th>Localisation<button class="dd-btn" type="button" data-dd="geo" title="Filtrer par valeur" aria-label="Filtrer la colonne Localisation par valeur" aria-haspopup="true">▾</button></th><th></th></tr>
@@ -129,7 +129,7 @@ AMD02;MARTIN Julie;ARARD 04/05;matin;5;250</pre>
 
     <details class="csvfmt">
       <summary>Format du fichier CSV à importer</summary>
-      <p><b>Export Isadom</b> (requête RDV v7, en-tête <code>IdRdv;TypeBesoin;DateRdv;HeureDebut;…</code>) : reconnu automatiquement. Les RDV déjà importés sont mis à jour par leur IdRdv, ceux qui ont disparu de l'export sur les mêmes dates sont retirés ; les coordonnées et les heures Isadom sont utilisées telles quelles, les types de visite inconnus sont ajoutés aux paramètres (20 min par défaut).</p>
+      <p><b>Export Isadom</b> (requête RDV v7, en-tête <code>IdRdv;TypeBesoin;DateRdv;HeureDebut;…</code>) : reconnu automatiquement. Les RDV déjà importés sont mis à jour par leur IdRdv, ceux qui ont disparu de l'export sur les mêmes dates sont retirés ; les coordonnées et les heures Isadom sont utilisées telles quelles, les types de visite inconnus sont ajoutés aux paramètres (<span class="duree-defaut">10</span> min par défaut).</p>
       <p>Fichier texte UTF-8, séparateur point-virgule <code>;</code>, une ligne d'en-tête puis une ligne par RDV. Depuis Excel : « Enregistrer sous › CSV UTF-8 (délimité par des points-virgules) ». Les RDV importés s'ajoutent à ceux déjà présents.</p>
       <div class="scroll">
         <table class="tbl">
@@ -163,7 +163,7 @@ AMD02;MARTIN Julie;ARARD 04/05;matin;5;250</pre>
         <div><label for="p-multi">RDV à plusieurs types : % de la somme des durées</label><input id="p-multi" type="number" min="10" max="100" step="5" data-param="multiCoef"></div>
         <div><label for="p-tmin">AMD saturé : temps sur place minimum (%)</label><input id="p-tmin" type="number" min="0" max="100" step="5" data-param="tempsMin"></div>
       </div>
-      <p class="hint">Le stationnement s'ajoute à chaque visite. Un code de type inconnu compte 20 min.</p>
+      <p class="hint">Le stationnement s'ajoute à chaque visite. Un code de type inconnu compte <span class="duree-defaut">10</span> min.</p>
       <p class="hint">Aucun RDV ne doit rester non planifié : si un AMD ne peut pas tenir tous ses RDV, son temps sur place est réduit par pas de 10 % jusqu'à ce minimum (stationnement et trajets inchangés). Si cela ne suffit pas, ses heures et km max sont levés, puis sa fin de journée est repoussée à 21h00, enfin les créneaux de ses RDV sont élargis à toute sa journée.</p>
     </section>
   </div>
@@ -200,7 +200,7 @@ AMD02;MARTIN Julie;ARARD 04/05;matin;5;250</pre>
         <tbody id="t-types"></tbody>
       </table>
     </div>
-    <p class="hint">Durée passée chez le patient, hors stationnement. Un code de visite Isadom absent de la liste y est ajouté à l'import avec 20 min. Un RDV à plusieurs types compte la somme de leurs durées multipliée par le pourcentage de « Temps sur place ».</p>
+    <p class="hint">Durée passée chez le patient, hors stationnement. Un code de visite Isadom absent de la liste y est ajouté à l'import avec <span class="duree-defaut">10</span> min. Un RDV à plusieurs types compte la somme de leurs durées multipliée par le pourcentage de « Temps sur place ».</p>
   </section>
 </section>
 
@@ -220,7 +220,7 @@ AMD02;MARTIN Julie;ARARD 04/05;matin;5;250</pre>
     <button class="btn" id="tr-go" type="button">Calculer</button>
     <datalist id="dl-depots"></datalist>
   </section>
-  <p class="msg" id="tr-msg" hidden></p>
+  <p class="msg" id="tr-msg" role="status" aria-live="polite" hidden></p>
   <div class="split">
     <div class="col-narrow">
       <section class="card kpis">
@@ -250,12 +250,12 @@ AMD02;MARTIN Julie;ARARD 04/05;matin;5;250</pre>
       <p class="sub">Choisir la date puis lancer l'optimisation. Les AMD et les RDV se gèrent dans les écrans Paramètres AMD et Paramètres RDV.</p>
     </div>
     <div class="actions">
-      <div><label for="pl-date">Date planifiée</label><input id="pl-date" class="mono" placeholder="jj/mm/aaaa" maxlength="10" inputmode="numeric" autocomplete="off" style="width:140px"></div>
+      <div><label for="pl-date">Date planifiée</label><input id="pl-date" class="mono w140" placeholder="jj/mm/aaaa" maxlength="10" inputmode="numeric" autocomplete="off"></div>
       <button class="btn" id="pl-go" type="button">Optimiser les tournées</button>
     </div>
   </div>
   <p class="hint" id="pl-cible"></p>
-  <p class="msg" id="pl-msg" hidden></p>
+  <p class="msg" id="pl-msg" role="status" aria-live="polite" hidden></p>
   <section class="card ecartes" id="pl-ecartes" hidden>
     <h2>RDV qui ne pourront pas être optimisés <span class="count" id="c-pl-ecartes"></span></h2>
     <p class="hint">Toutes dates confondues, sur les antennes incluses dans le test : adresse introuvable, localisée seulement à la commune, ou hors de la carte (PACA / Corse). Ces RDV seront écartés du calcul. Corrigez l'adresse dans l'écran Paramètres RDV ou dans Isadom, ou traitez-les manuellement.</p>
@@ -288,7 +288,7 @@ AMD02;MARTIN Julie;ARARD 04/05;matin;5;250</pre>
     </div>
   </div>
 
-  <p class="msg" id="r-msg" hidden></p>
+  <p class="msg" id="r-msg" role="status" aria-live="polite" hidden></p>
   <div class="msg err" id="r-alerte" role="alert" hidden></div>
   <section class="card ecartes" id="r-ecartes" hidden>
     <h2>RDV écartés du calcul <span class="count" id="c-ecartes"></span></h2>
@@ -298,17 +298,6 @@ AMD02;MARTIN Julie;ARARD 04/05;matin;5;250</pre>
   <div class="noprint" id="r-opt-zone" hidden><button class="btn" id="r-opt" type="button">Optimiser cette journée</button></div>
 
   <div id="r-agenda" class="noprint" hidden></div>
-
-  <section class="card" id="r-compare" hidden>
-    <h2>Comparaison avec la planification actuelle</h2>
-    <div class="scroll">
-      <table class="tbl">
-        <thead><tr><th>Indicateur</th><th class="num">Actuel</th><th class="num">Optimisé</th><th class="num">Écart</th></tr></thead>
-        <tbody id="t-compare"></tbody>
-      </table>
-    </div>
-    <p class="hint">« Actuel » = mêmes affectations AMD que la colonne « AMD prévu aujourd'hui », avec le meilleur ordre de passage pour chacun. L'écart mesure donc le gain lié à la répartition entre AMD.</p>
-  </section>
 
   <div class="split">
     <div class="col-wide" id="r-routes"></div>
@@ -394,11 +383,13 @@ AMD02;MARTIN Julie;ARARD 04/05;matin;5;250</pre>
 </dialog>
 
 <script src="vendor/leaflet/leaflet.js"></script>
+<script src="js/commun/texte-core.js"></script>
 <script src="js/stats/stats-core.js"></script>
 <script src="js/journal/journal-core.js"></script>
 <script src="js/optim/regroupe-core.js"></script>
 <script src="js/optim/force-core.js"></script>
 <script src="js/geo/geocode-core.js"></script>
+<script src="js/import/import-core.js"></script>
 <script src="app.js"></script>
 <script type="module" src="js/agenda/agenda-main.js"></script>
 <script type="module" src="js/journal/journal-view.js"></script>
