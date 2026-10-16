@@ -682,8 +682,8 @@ function clicSuppr(t) {
     $('[data-suppr-no]', $(Z.zone)).focus();
     return true;
   }
-  if (ok) { ZONES_SUPPR[ok.dataset.suppr].ok(); save(); resetZoneSuppr(ok.dataset.suppr); renderPlan(); return true; }
-  if (no) { resetZoneSuppr(no.dataset.suppr); $('[data-suppr]', $(ZONES_SUPPR[no.dataset.suppr].zone)).focus(); return true; }
+  if (ok) { ZONES_SUPPR[ok.dataset.supprOk].ok(); save(); resetZoneSuppr(ok.dataset.supprOk); renderPlan(); return true; }
+  if (no) { const k = no.dataset.supprNo; resetZoneSuppr(k); $('[data-suppr]', $(ZONES_SUPPR[k].zone)).focus(); return true; }
   return false;
 }
 let filterTimer;
