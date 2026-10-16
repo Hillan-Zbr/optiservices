@@ -62,3 +62,13 @@ test('un job fusionné non affecté rend tous ses RDV non affectés', () => {
   const out = G.eclaterReponse({ routes: [], unassigned: [{ id: 1, type: 'job' }] }, jobs, g);
   assert.deepEqual(out.unassigned.map((u) => u.id), [1, 3]);
 });
+
+test('RDV sans créneau (horaires levés) : regroupés, job fusionné sans time_windows', () => {
+  const sans = [{ cle: '0|A', lon: 5.5, lat: 43.3 }, { cle: '0|A', lon: 5.5, lat: 43.3 }];
+  const g = G.grouper(sans);
+  assert.equal(g.length, 1);
+  const f = G.fusionnerJobs([{ id: 1, service: 60 }, { id: 2, service: 120 }], g);
+  assert.equal(f.length, 1);
+  assert.equal(f[0].service, 180);
+  assert.equal('time_windows' in f[0], false);
+});

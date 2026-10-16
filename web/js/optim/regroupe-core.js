@@ -8,7 +8,7 @@
    puis on éclate l'étape du job fusionné dans la réponse VROOM en une étape par RDV.
 
    Entrée de grouper() : une ligne par job VROOM, dans l'ordre des jobs (index j -> id j + 1) :
-     { cle (patient + AMD ; vide = jamais regroupé), lon, lat, fenetre: [debut, fin] (s) } */
+     { cle (patient + AMD ; vide = jamais regroupé), lon, lat, fenetre: [debut, fin] (s) ou absente (aucun créneau) } */
 (function (root, factory) {
   const api = factory();
   if (typeof module === 'object' && module.exports) module.exports = api;
@@ -25,9 +25,12 @@
   }
 
   /* groupes d'index (ordre d'origine conservé) ; un RDV seul forme un groupe d'un élément */
+  /* sans créneau (palier « horaires levés » du placement forcé) : fenêtre illimitée */
+  const SANS = [-Infinity, Infinity];
   function grouper(lignes) {
     const groupes = [];
-    lignes.forEach((l, i) => {
+    lignes.forEach((l0, i) => {
+      const l = l0.fenetre ? l0 : Object.assign({}, l0, { fenetre: SANS });
       const g = l.cle && groupes.find((x) => {
         const t = lignes[x.membres[0]];
         return t.cle === l.cle && distanceM(t, l) <= DISTANCE_MAX_M &&
@@ -46,10 +49,12 @@
     return groupes.map((g) => {
       const tete = jobs[g.membres[0]];
       if (g.membres.length === 1) return tete;
-      return Object.assign({}, tete, {
+      const job = Object.assign({}, tete, {
         service: g.membres.reduce((s, i) => s + (Number(jobs[i].service) || 0), 0),
         time_windows: [g.fenetre.slice()]
       });
+      if (!Number.isFinite(g.fenetre[0]) || !Number.isFinite(g.fenetre[1])) delete job.time_windows;
+      return job;
     });
   }
 

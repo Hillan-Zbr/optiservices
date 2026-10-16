@@ -1098,7 +1098,7 @@ async function optimize() {
     const cleGroupe = (r) => { const pat = String(r.patientCode || r.patient || '').trim().toUpperCase(); return pat ? amdDuRdv(r, amds).idx + '|' + pat : ''; };
     const resoudre = async (reglages) => {
       const jobs = buildJobs(reglages);
-      const groupes = OptiRegroupe.grouper(jobsR.map((r, j) => ({ cle: cleGroupe(r), lon: r.geo.lon, lat: r.geo.lat, fenetre: jobs[j].time_windows[0] })));
+      const groupes = OptiRegroupe.grouper(jobsR.map((r, j) => ({ cle: cleGroupe(r), lon: r.geo.lon, lat: r.geo.lat, fenetre: jobs[j].time_windows && jobs[j].time_windows[0] })));
       const req = { vehicles: buildVehicles(reglages), jobs: OptiRegroupe.fusionnerJobs(jobs, groupes), options: { g: true } };
       return OptiRegroupe.eclaterReponse(await callVroom(req), jobs, groupes);
     };
