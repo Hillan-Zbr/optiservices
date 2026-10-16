@@ -97,7 +97,7 @@ td input[type=checkbox]{min-width:0;cursor:pointer}
 .msg.warn{background:var(--warn-soft);border-color:#efcf9f;color:var(--warn)}
 
 .geo{font-size:12px;white-space:nowrap}
-.geo.ok{color:var(--ok)}.geo.low{color:var(--warn)}.geo.ko{color:var(--danger)}.geo.no{color:var(--muted)}
+.geo.ok{color:var(--ok)}.geo.info{color:var(--accent)}.geo.low{color:var(--warn)}.geo.ko{color:var(--danger)}.geo.no{color:var(--muted)}
 
 #csv-report{border-radius:8px;padding:12px 16px;font-size:14px}
 #csv-report.ok{background:#e9f6ef;border:1px solid #b9e0c9}
@@ -194,9 +194,11 @@ details.infos div{white-space:pre-wrap}
 .card.ecartes{border:2px solid #f3b7b0;background:#fff8f7}
 .card.ecartes h2{color:#7a1a12}
 .card.ecartes h2::before{content:"⚠ ";}
-.card.ecartes.approx{border-color:#f0d08a;background:#fffbf0}
-.card.ecartes.approx h2{color:#6a4300}
-.warn-txt{color:var(--warn);font-size:14px}
+.card.info-geo{border:1px solid var(--line);background:var(--accent-soft)}
+.card.info-geo h2{color:var(--accent-d)}
+.card.info-geo h2::before{content:"ℹ ";}
+.info-txt{color:var(--accent-d);font-size:14px;font-weight:500}
+.geo-info{color:var(--accent);font-size:12px}
 
 /* recherche par colonne (tableau des RDV) */
 .tbl tr.filters th{padding:4px 8px 8px;text-transform:none;letter-spacing:0;font-weight:400}

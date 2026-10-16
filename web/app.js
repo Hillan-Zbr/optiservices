@@ -304,7 +304,7 @@ async function geocodeRdv(r) {
 /* à (re)géocoder : sans position, géocodé avant la v3, ou pas localisé précisément (les recherches déjà faites
    sont en cache : seules les nouvelles variantes partent vers la BAN). Les coordonnées Isadom ne sont pas touchées */
 const aGeocoder = (r) => !r.geo || (!r.geo.src && (r.geo.v !== 3 || !!r.geo.none || !!r.geo.commune));
-/* texte d'alerte d'un RDV placé au centre de sa commune (écran Planification, journal, MJ2) */
+/* texte d'information d'un RDV placé au centre de sa commune (écran Planification, journal, MJ2) */
 const alerteCommune = (rd) => MOTIF_COMMUNE + (rd.geoRejete ? ` (coordonnées Isadom hors zone : ${rd.geoRejete})` : '');
 async function geocodeDepot(d) {
   const cp = (d.adr.match(/\b\d{5}\b/) || [])[0];
@@ -322,7 +322,7 @@ async function pool(items, fn, n = 5) {
 function geoBadge(g) {
   if (!g) return '<span class="geo no">À localiser</span>';
   if (g.horsZone) return `<span class="geo ko" title="${esc(g.label || '')}">Hors zone carte</span>`;
-  if (g.commune) return `<span class="geo low" title="Adresse introuvable, point placé au centre de la commune : ${esc(g.label || '')}">Centre commune</span>`;
+  if (g.commune) return `<span class="geo info" title="Adresse introuvable, point placé au centre de la commune : ${esc(g.label || '')}">Centre commune</span>`;
   if (g.none) return '<span class="geo ko">Introuvable</span>';
   if (g.src) return `<span class="geo ok" title="${esc(g.label)}">Isadom${g.src === 'w3w' ? ' (W3W)' : ''}</span>`;
   const title = `${esc(g.label)} · score ${g.score.toFixed(2)}${g.etape ? ' · ' + esc(g.etape) : ''}`;
@@ -458,13 +458,13 @@ function renderPlanif() {
   $('#pl-ecartes').hidden = !probs.length;
   $('#c-pl-ecartes').textContent = probs.length ? `· ${probs.length}` + (nProbDay ? ` dont ${nProbDay} le ${frDate(state.date)}` : '') : '';
   $('#t-pl-ecartes').innerHTML = ecartesRows(probs);
-  // alerte : RDV optimisés au centre de leur commune (adresse introuvable)
+  // information : RDV optimisés au centre de leur commune (adresse introuvable)
   const approx = state.rdv.filter((r) => rdvPris(r) && r.geo && r.geo.commune && inZone(r.geo))
     .map((r) => Object.assign({}, r, { motif: alerteCommune(r) })).sort((a, b) => a.date.localeCompare(b.date));
   const nApproxDay = approx.filter((r) => r.date === state.date).length;
   $('#pl-commune').hidden = !approx.length;
   $('#c-pl-commune').textContent = approx.length ? `· ${approx.length}` + (nApproxDay ? ` dont ${nApproxDay} le ${frDate(state.date)}` : '') : '';
-  $('#t-pl-commune').innerHTML = ecartesRows(approx, 'warn-txt');
+  $('#t-pl-commune').innerHTML = ecartesRows(approx, 'info-txt');
 }
 /* état des boutons ▾ d'en-tête (filtre actif, sens du tri) d'un tableau */
 function majDdBtns(t) {
@@ -1077,7 +1077,7 @@ async function optimize() {
     const excluded = day.filter((r) => !inZone(r.geo)).map((r) => Object.assign(clone(r), { motif: motifGeo(r) }));
     if (excluded.length) J.warn('optimisation', 'RDV écartés du calcul', `${excluded.length} RDV écarté${pl(excluded.length)} de l'optimisation du ${frDate(state.date)} (adresse et commune introuvables ou hors carte)`, excluded.map((r) => `${rdvRef(r)} · ${r.cp} ${r.ville} · ${r.motif}`));
     const approx = jobsR.filter((r) => r.geo.commune);
-    if (approx.length) J.warn('optimisation', 'RDV placés au centre de la commune', `${approx.length} RDV du ${frDate(state.date)} optimisé${pl(approx.length)} au centre de leur commune (adresse introuvable) : heure de passage approximative`, approx.map((r) => `${rdvRef(r)} · ${r.cp} ${r.ville}${r.geoRejete ? ' · coordonnées Isadom hors zone ' + r.geoRejete : ''}`));
+    if (approx.length) J.info('optimisation', 'RDV placés au centre de la commune', `${approx.length} RDV du ${frDate(state.date)} optimisé${pl(approx.length)} au centre de leur commune (adresse introuvable) : heure de passage approximative`, approx.map((r) => `${rdvRef(r)} · ${r.cp} ${r.ville}${r.geoRejete ? ' · coordonnées Isadom hors zone ' + r.geoRejete : ''}`));
     const badType = jobsR.filter((r) => rdvTypes(r).some((c) => !typeOf(c)));
     if (badType.length) throw new Error('Type d’intervention inconnu pour ' + badType.map((r) => esc(patientLib(r))).join(', '));
 
@@ -1257,7 +1257,7 @@ function renderResult() {
       n++; const rd = R.rdv[s.job - 1]; const c = crenOf(rd.cren);
       // créneau élargi par le placement forcé : la visite peut commencer après la fin du créneau Isadom
       const horsCren = (s.arrival + (s.waiting_time || 0) > rdvWindow(rd)[1] ? ' <span class="over">⚠ hors créneau</span>' : '')
-        + (rd.geo && rd.geo.commune ? ` <span class="over" title="${esc(alerteCommune(rd))}">⚠ centre de la commune</span>` : '');
+        + (rd.geo && rd.geo.commune ? ` <span class="geo-info" title="${esc(alerteCommune(rd))}">ℹ centre de la commune</span>` : '');
       const inf = infoTitle(rd);
       return `<li class="pick" data-job="${s.job}" tabindex="0" title="Voir sur la carte"><span class="n" style="background:${col}">${n}</span>
         <span><b>${esc(patientLib(rd))}</b>${horsCren} <span class="w">· ${esc(rd.ville)} · </span>${rdvTypeHtml(rd)}<span class="w">${rd.adresse ? ' · ' + esc(rd.adresse) : ''}</span>${rdvVisitePrest(rd) ? `<div class="hint mono">Visite | Prestation : ${esc(rdvVisitePrest(rd))}</div>` : ''}${rd.infoRdv ? `<div class="hint">Info RDV : ${esc(rd.infoRdv)}</div>` : ''}${inf ? `<details class="infos"><summary>Infos d'accès</summary>${rdvInfos(rd).map(([k, v]) => `<div><span class="hint">${esc(k)}</span> ${esc(v)}</div>`).join('')}</details>` : ''}</span>

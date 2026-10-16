@@ -8,7 +8,7 @@
      2. l'adresse nettoyée (compléments et nom d'établissement retirés, abréviations développées) ;
      3. l'adresse nettoyée sans ses derniers mots (lieu-dit ou résidence collés à la voie) ;
      4. l'adresse nettoyée sans code postal (code postal erroné) ;
-     5. en dernier recours, la commune seule (précision « commune »).
+     5. la commune seule, puis le hameau dans le code postal, puis le code postal seul (précision « commune »).
    Un résultat n'est retenu que s'il est dans la zone de la carte, dans la commune du RDV,
    avec un score suffisant et un nom de voie qui partage au moins un mot avec l'adresse
    (sinon la BAN renvoie n'importe quelle rue de la commune).
@@ -174,6 +174,22 @@
         if (f) { best = Object.assign({}, f, { precision: 'commune', etape: 'commune seule' }); break; }
         if (fs.length) horsZone = horsZone || fs[0];
       }
+    }
+    // la « ville » Isadom est parfois un hameau (« FOLELLI », commune de Penta-di-Casinca) : une voie
+    // du même code postal qui porte son nom (« Avenue de Folelli ») situe le hameau
+    if (!best && rd.ville && rd.cp && villeNette(rd.ville).length >= 3) {
+      const fs = (await chercher({ q: villeNette(rd.ville), postcode: rd.cp }))
+        .filter((f) => f.type !== 'municipality' && f.postcode === rd.cp && voieOk(f, rd.ville));
+      const f = fs.find(dansZone);
+      if (f) best = Object.assign({}, f, { precision: 'commune', etape: 'hameau (code postal)' });
+      else if (fs.length) horsZone = horsZone || fs[0];
+    }
+    // dernier recours : la première commune du code postal
+    if (!best && rd.cp) {
+      const fs = (await chercher({ q: rd.cp, postcode: rd.cp, type: 'municipality' })).filter((f) => f.postcode === rd.cp);
+      const f = fs.find(dansZone);
+      if (f) best = Object.assign({}, f, { precision: 'commune', etape: 'code postal seul' });
+      else if (fs.length) horsZone = horsZone || fs[0];
     }
     if (best) {
       const { lon, lat, label, score, precision, etape } = best;

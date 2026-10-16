@@ -85,3 +85,20 @@ test('code postal erroné : nouvelle recherche sans code postal, commune vérifi
   assert.equal(g.precision, 'adresse');
   assert.equal(g.etape, 'sans code postal');
 });
+
+test('ville Isadom qui est un hameau : voie du hameau, sinon première commune du code postal', async () => {
+  const rd = { adresse: 'rt 10 appeler pour guidage', cp: '20999', ville: 'HAMEAUFICTIF' };
+  const hameau = fausseBan({
+    'HAMEAUFICTIF|20999|': [f({ name: 'Avenue de Hameaufictif', city: 'Communefictive', postcode: '20999', lat: 42.4, lon: 9.5 })]
+  });
+  const g = await G.localise(rd, hameau.chercher);
+  assert.equal(g.precision, 'commune');
+  assert.equal(g.etape, 'hameau (code postal)');
+  const cp = fausseBan({
+    '20999|20999|municipality': [f({ type: 'municipality', label: 'Communefictive', city: 'Communefictive', postcode: '20999', lat: 42.4, lon: 9.5 })]
+  });
+  const g2 = await G.localise(rd, cp.chercher);
+  assert.equal(g2.precision, 'commune');
+  assert.equal(g2.etape, 'code postal seul');
+  assert.equal(g2.label, 'Communefictive');
+});
