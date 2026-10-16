@@ -293,16 +293,19 @@ const ZONE_CARTE = [
 ];
 const inZone = (g) => !!g && !g.none && ZONE_CARTE.some((z) => g.lat >= z.lat[0] && g.lat <= z.lat[1] && g.lon >= z.lon[0] && g.lon <= z.lon[1]);
 const MOTIF_HORS_ZONE = 'hors zone de la carte (PACA / Corse)';
-const MOTIF_COMMUNE = 'adresse localisée seulement à la commune';
-/* RDV : recherche en cascade (web/js/geo/geocode-core.js). Une position à la commune seulement
-   est gardée (lat/lon) mais marquée none : le RDV est écarté du calcul. v: 2 = géocodé en cascade */
+const MOTIF_COMMUNE = 'adresse introuvable : placé au centre de la commune';
+/* RDV : recherche en cascade (web/js/geo/geocode-core.js). Décision de la RP (16/10/2026) : une position
+   à la commune seulement (code postal + ville) est gardée et optimisée, avec une alerte (commune: true)
+   pour que l'AMD ait bien le RDV. v: 3 = géocodé en cascade, commune incluse */
 async function geocodeRdv(r) {
   const g = await OptiGeocode.localise(r, chercherBan, { dansZone: inZone });
-  r.geo = !g ? { none: true, v: 2 } : Object.assign(g, { v: 2 }, g.precision === 'commune' ? { none: true, commune: true } : {});
+  r.geo = !g ? { none: true, v: 3 } : Object.assign(g, { v: 3 }, g.precision === 'commune' ? { commune: true } : {});
 }
-/* à (re)géocoder : sans position, géocodé avant la cascade, ou pas localisé précisément (les recherches déjà faites
+/* à (re)géocoder : sans position, géocodé avant la v3, ou pas localisé précisément (les recherches déjà faites
    sont en cache : seules les nouvelles variantes partent vers la BAN). Les coordonnées Isadom ne sont pas touchées */
-const aGeocoder = (r) => !r.geo || (!r.geo.src && (r.geo.v !== 2 || !!r.geo.none));
+const aGeocoder = (r) => !r.geo || (!r.geo.src && (r.geo.v !== 3 || !!r.geo.none || !!r.geo.commune));
+/* texte d'alerte d'un RDV placé au centre de sa commune (écran Planification, journal, MJ2) */
+const alerteCommune = (rd) => MOTIF_COMMUNE + (rd.geoRejete ? ` (coordonnées Isadom hors zone : ${rd.geoRejete})` : '');
 async function geocodeDepot(d) {
   const cp = (d.adr.match(/\b\d{5}\b/) || [])[0];
   const g = await geocode(d.adr, cp);
@@ -319,7 +322,7 @@ async function pool(items, fn, n = 5) {
 function geoBadge(g) {
   if (!g) return '<span class="geo no">À localiser</span>';
   if (g.horsZone) return `<span class="geo ko" title="${esc(g.label || '')}">Hors zone carte</span>`;
-  if (g.commune) return `<span class="geo ko" title="Seule la commune a été trouvée : ${esc(g.label || '')}">Commune seulement</span>`;
+  if (g.commune) return `<span class="geo low" title="Adresse introuvable, point placé au centre de la commune : ${esc(g.label || '')}">Centre commune</span>`;
   if (g.none) return '<span class="geo ko">Introuvable</span>';
   if (g.src) return `<span class="geo ok" title="${esc(g.label)}">Isadom${g.src === 'w3w' ? ' (W3W)' : ''}</span>`;
   const title = `${esc(g.label)} · score ${g.score.toFixed(2)}${g.etape ? ' · ' + esc(g.etape) : ''}`;
@@ -329,13 +332,13 @@ function geoBadge(g) {
 }
 
 /* lignes du tableau des RDV écartés (écran Planification : prévision ; écran Résultat : résultat) */
-function ecartesRows(list) {
+function ecartesRows(list, cls = 'danger-txt') {
   return list.map((rd) => `<tr><td class="mono gras">${esc(frDate(rd.date))}</td><td class="mono gras">${esc(rd.patientCode || '')}</td><td class="mono gras">${esc(rd.idRdv || '')}</td><td><b>${esc(rd.patient)}</b>${rd.antenne ? `<div class="hint">${esc(rd.antenne)}</div>` : ''}</td>
     <td class="mono">${esc(rd.cp)}</td><td>${esc(rd.ville || '?')}</td><td>${esc(rd.adresse)}</td><td>${rdvTypeHtml(rd)}</td>
     <td class="mono">${esc(crenTexte(rd))}</td><td>${esc(rd.amdActuel)}</td>
-    <td><b class="danger-txt">${esc(rd.motif)}</b>${rd.geo && rd.geo.label ? `<div class="hint">localisé : ${esc(rd.geo.label)}</div>` : ''}</td></tr>`).join('');
+    <td><b class="${cls}">${esc(rd.motif)}</b>${rd.geo && rd.geo.label ? `<div class="hint">localisé : ${esc(rd.geo.label)}</div>` : ''}</td></tr>`).join('');
 }
-const motifGeo = (rd) => (rd.geo && rd.geo.horsZone ? MOTIF_HORS_ZONE : rd.geo && rd.geo.commune ? MOTIF_COMMUNE : rd.geo && !rd.geo.none && !inZone(rd.geo) ? MOTIF_HORS_ZONE : 'adresse introuvable');
+const motifGeo = (rd) => (rd.geo && rd.geo.horsZone ? MOTIF_HORS_ZONE : rd.geo && !rd.geo.none && !inZone(rd.geo) ? MOTIF_HORS_ZONE : 'adresse et commune introuvables');
 
 /* ---------- 1. paramètres ---------- */
 function renderParams() {
@@ -455,6 +458,13 @@ function renderPlanif() {
   $('#pl-ecartes').hidden = !probs.length;
   $('#c-pl-ecartes').textContent = probs.length ? `· ${probs.length}` + (nProbDay ? ` dont ${nProbDay} le ${frDate(state.date)}` : '') : '';
   $('#t-pl-ecartes').innerHTML = ecartesRows(probs);
+  // alerte : RDV optimisés au centre de leur commune (adresse introuvable)
+  const approx = state.rdv.filter((r) => rdvPris(r) && r.geo && r.geo.commune && inZone(r.geo))
+    .map((r) => Object.assign({}, r, { motif: alerteCommune(r) })).sort((a, b) => a.date.localeCompare(b.date));
+  const nApproxDay = approx.filter((r) => r.date === state.date).length;
+  $('#pl-commune').hidden = !approx.length;
+  $('#c-pl-commune').textContent = approx.length ? `· ${approx.length}` + (nApproxDay ? ` dont ${nApproxDay} le ${frDate(state.date)}` : '') : '';
+  $('#t-pl-commune').innerHTML = ecartesRows(approx, 'warn-txt');
 }
 /* état des boutons ▾ d'en-tête (filtre actif, sens du tri) d'un tableau */
 function majDdBtns(t) {
@@ -537,7 +547,7 @@ function renderRdvTable() {
 }
 /* recherche par colonne dans le tableau des RDV : chaque mot saisi doit figurer dans la colonne (sans accents ni casse) */
 const rdvFilter = {};
-const geoText = (g) => (!g ? 'à localiser' : g.horsZone ? 'hors zone carte' : g.commune ? 'commune seulement ' + (g.label || '') : g.none ? 'introuvable' : g.precision === 'rue' ? 'rue seulement localise ban ' + (g.label || '') : g.src ? 'isadom ' + (g.src === 'w3w' ? 'w3w what3words' : 'coordonnees') + ' localise' : 'localise ban ' + (g.label || ''));
+const geoText = (g) => (!g ? 'à localiser' : g.horsZone ? 'hors zone carte' : g.commune ? 'centre commune adresse introuvable ' + (g.label || '') : g.none ? 'introuvable' : g.precision === 'rue' ? 'rue seulement localise ban ' + (g.label || '') : g.src ? 'isadom ' + (g.src === 'w3w' ? 'w3w what3words' : 'coordonnees') + ' localise' : 'localise ban ' + (g.label || ''));
 const FILTER_TEXT = {
   date: (r) => frDate(r.date) + ' ' + r.date,
   code: (r) => r.patientCode,
@@ -559,7 +569,7 @@ function rdvMatches(r, sauf) {
 }
 /* liste déroulante des valeurs dans l'en-tête des colonnes, comme le filtre automatique d'Excel */
 const rdvSel = {}; // colonne → Set des valeurs cochées ; colonne absente = pas de filtre
-const geoVal = (g) => (!g ? 'À localiser' : g.horsZone ? 'Hors zone carte' : g.commune ? 'Commune seulement' : g.none ? 'Introuvable' : g.precision === 'rue' ? 'Rue seulement (BAN)' : g.src ? (g.src === 'w3w' ? 'Isadom (what3words)' : 'Isadom (coordonnées)') : 'Localisé (BAN)');
+const geoVal = (g) => (!g ? 'À localiser' : g.horsZone ? 'Hors zone carte' : g.commune ? 'Centre de la commune' : g.none ? 'Introuvable' : g.precision === 'rue' ? 'Rue seulement (BAN)' : g.src ? (g.src === 'w3w' ? 'Isadom (what3words)' : 'Isadom (coordonnées)') : 'Localisé (BAN)');
 const DD_VAL = {
   date: (r) => r.date || '',
   code: (r) => r.patientCode || '',
@@ -905,7 +915,9 @@ function importIsadom(rows, head, name) {
       type: types[0], types, typeVisite: get('typevisite'), typePrestation: get('typeprestation'), infoRdv: get('infordv'), amdActuel: get('amdnom'), amdCode: get('amdcode'), antenne: get('antenne'), secteur: get('secteurlibelle'),
       acces: { tel1: get('telfixe'), tel2: get('telautre'), batiment: get('batiment'), etage: get('etage'), porte: get('porte'), interphone: get('interphone'), info: get('infoadresse') }
     };
-    const g = I.isadomGeo(get, inZone); if (g) rd.geo = g; else if (get('lat') || get('w3wlat')) geoRejet.push(id);
+    const g = I.isadomGeo(get, inZone);
+    if (g) rd.geo = g;
+    else if (get('lat') || get('w3wlat')) { geoRejet.push(id); rd.geoRejete = get('lat') ? get('lat') + ', ' + get('lon') : get('w3wlat') + ', ' + get('w3wlon'); }
     seen.set(id, rd); dates.add(date);
   });
   // fusion : un RDV déjà connu (même IdRdv) est remplacé ; un RDV Isadom d'une date couverte par le fichier
@@ -936,7 +948,7 @@ function importIsadom(rows, head, name) {
   const info = [
     `${added} nouveau${added > 1 ? 'x' : ''}, ${updated} mis à jour, ${removed} retiré${pl(removed)} (absent${pl(removed)} du nouvel export)`,
     `${seen.size - noGeo} localisé${pl(seen.size - noGeo)} par les coordonnées Isadom · ${noGeo} à géocoder par l'adresse`,
-    geoRejet.length ? `${geoRejet.length} RDV avec des coordonnées Isadom hors PACA / Corse (erreur de saisie ou patient hors zone) : regéocodés par l'adresse, écartés si toujours hors zone — RDV ${geoRejet.map(esc).join(', ')}` : '',
+    geoRejet.length ? `${geoRejet.length} RDV avec des coordonnées Isadom hors PACA / Corse (erreur de saisie ou patient hors zone) : regéocodés par l'adresse, sinon placés au centre de la commune — RDV ${geoRejet.map(esc).join(', ')}` : '',
     `${multi} RDV à plusieurs types de visite : durée = somme × ${p.multiCoef} %`,
     outScope ? `${outScope} RDV sur des antennes hors test (non optimisés tant que l'antenne n'est pas incluse dans les paramètres)` : '',
     created.length ? `${created.length} type${pl(created.length)} de visite ajouté${pl(created.length)} aux paramètres : ${created.map((t) => `<code>${esc(t.code)}</code> ${t.duree} min`).join(', ')}` : '',
@@ -969,7 +981,11 @@ function importIsadom(rows, head, name) {
     pool(toGeo, geocodeRdv)
       .then(() => {
         const nKo = toGeo.filter((rd) => !inZone(rd.geo)).length;
-        st.textContent = `${toGeo.length} adresse${pl(toGeo.length)} localisée${pl(toGeo.length)} par géocodage` + (nKo ? ` · ${nKo} introuvable${pl(nKo)} ou hors zone : voir « RDV qui ne pourront pas être optimisés » à l'écran Planification.` : '.');
+        const nCom = toGeo.filter((rd) => rd.geo && rd.geo.commune).length;
+        st.textContent = `${toGeo.length} adresse${pl(toGeo.length)} localisée${pl(toGeo.length)} par géocodage`
+          + (nCom ? ` · ${nCom} placée${pl(nCom)} au centre de la commune : voir « RDV placés au centre de la commune » à l'écran Planification` : '')
+          + (nKo ? ` · ${nKo} introuvable${pl(nKo)} ou hors zone : voir « RDV qui ne pourront pas être optimisés » à l'écran Planification.` : '.');
+        renderPlan();
       })
       .catch((e) => {
         console.error(e);
@@ -1059,7 +1075,9 @@ async function optimize() {
     if (badDep.length) throw new Error('Adresse introuvable pour : ' + [...new Set(badDep.map((a) => depotOf(a.depot).nom))].join(', ') + '. Corrigez-la dans les paramètres.');
     const jobsR = day.filter((r) => inZone(r.geo));
     const excluded = day.filter((r) => !inZone(r.geo)).map((r) => Object.assign(clone(r), { motif: motifGeo(r) }));
-    if (excluded.length) J.warn('optimisation', 'RDV écartés du calcul', `${excluded.length} RDV écarté${pl(excluded.length)} de l'optimisation du ${frDate(state.date)} (adresse introuvable, localisée à la commune seulement ou hors carte)`, excluded.map((r) => `${rdvRef(r)} · ${r.cp} ${r.ville} · ${r.motif}`));
+    if (excluded.length) J.warn('optimisation', 'RDV écartés du calcul', `${excluded.length} RDV écarté${pl(excluded.length)} de l'optimisation du ${frDate(state.date)} (adresse et commune introuvables ou hors carte)`, excluded.map((r) => `${rdvRef(r)} · ${r.cp} ${r.ville} · ${r.motif}`));
+    const approx = jobsR.filter((r) => r.geo.commune);
+    if (approx.length) J.warn('optimisation', 'RDV placés au centre de la commune', `${approx.length} RDV du ${frDate(state.date)} optimisé${pl(approx.length)} au centre de leur commune (adresse introuvable) : heure de passage approximative`, approx.map((r) => `${rdvRef(r)} · ${r.cp} ${r.ville}${r.geoRejete ? ' · coordonnées Isadom hors zone ' + r.geoRejete : ''}`));
     const badType = jobsR.filter((r) => rdvTypes(r).some((c) => !typeOf(c)));
     if (badType.length) throw new Error('Type d’intervention inconnu pour ' + badType.map((r) => esc(patientLib(r))).join(', '));
 
@@ -1238,7 +1256,8 @@ function renderResult() {
       if (s.type !== 'job') return '';
       n++; const rd = R.rdv[s.job - 1]; const c = crenOf(rd.cren);
       // créneau élargi par le placement forcé : la visite peut commencer après la fin du créneau Isadom
-      const horsCren = s.arrival + (s.waiting_time || 0) > rdvWindow(rd)[1] ? ' <span class="over">⚠ hors créneau</span>' : '';
+      const horsCren = (s.arrival + (s.waiting_time || 0) > rdvWindow(rd)[1] ? ' <span class="over">⚠ hors créneau</span>' : '')
+        + (rd.geo && rd.geo.commune ? ` <span class="over" title="${esc(alerteCommune(rd))}">⚠ centre de la commune</span>` : '');
       const inf = infoTitle(rd);
       return `<li class="pick" data-job="${s.job}" tabindex="0" title="Voir sur la carte"><span class="n" style="background:${col}">${n}</span>
         <span><b>${esc(patientLib(rd))}</b>${horsCren} <span class="w">· ${esc(rd.ville)} · </span>${rdvTypeHtml(rd)}<span class="w">${rd.adresse ? ' · ' + esc(rd.adresse) : ''}</span>${rdvVisitePrest(rd) ? `<div class="hint mono">Visite | Prestation : ${esc(rdvVisitePrest(rd))}</div>` : ''}${rd.infoRdv ? `<div class="hint">Info RDV : ${esc(rd.infoRdv)}</div>` : ''}${inf ? `<details class="infos"><summary>Infos d'accès</summary>${rdvInfos(rd).map(([k, v]) => `<div><span class="hint">${esc(k)}</span> ${esc(v)}</div>`).join('')}</details>` : ''}</span>
@@ -1493,7 +1512,9 @@ function mj2Tournee(R, i, extra) {
     duree: (rd) => rdvDuree(rd),
     typesOf: rdvTypes,
     typeLibelle: (c) => { const t = typeOf(c); return t ? t.nom : c; },
-    forceLibelle: (rg) => OptiForce.libelle(rg)
+    forceLibelle: (rg) => OptiForce.libelle(rg),
+    // l'AMD est prévenu que la position GPS n'est que le centre de la commune
+    commentaireEtape: (rd) => (rd.geo && rd.geo.commune ? 'Adresse introuvable : position GPS au centre de la commune, appeler le patient si besoin.' : '')
   }, extra));
 }
 function exportJsonMj2() {

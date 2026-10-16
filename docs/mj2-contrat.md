@@ -9,7 +9,7 @@ Version du contrat : **1.0** (15/10/2026). Toute évolution incompatible change 
 - **Format** : JSON en UTF-8. Dates au format `AAAA-MM-JJ`, heures `HH:MM` (heure locale de Paris), horodatages ISO 8601 avec fuseau (`2026-10-15T17:42:00+02:00`).
 - **Authentification** : en-tête `X-Api-Key` (clé partagée, longue et aléatoire). MJ2 n'accepte que l'IP du serveur Optiservices. La clé n'est jamais dans le dépôt : elle est dans le `.env` du serveur Optiservices et dans la configuration de MJ2.
 - **Idempotence** : rejouer un appel ne crée jamais de doublon. Une tournée remplace la précédente ; un message est identifié par son `id`, généré par Optiservices.
-- **Champ `commentaire`** : présent sur la tournée, sur chaque étape et sur le message. Texte libre facultatif (`""` par défaut), prévu pour des usages non encore définis. MJ2 le stocke et peut l'afficher ; il ne porte aucune règle.
+- **Champ `commentaire`** : présent sur la tournée, sur chaque étape et sur le message. Texte libre facultatif (`""` par défaut), prévu pour des usages non encore définis. Sur une étape, Optiservices y signale une adresse introuvable dont la position GPS est le centre de la commune (16/10/2026). MJ2 le stocke et peut l'afficher ; il ne porte aucune règle.
 - **Champs inconnus** : MJ2 doit ignorer un champ qu'il ne connaît pas (ajout compatible sans changer de version).
 - **RGPD** : les données patients ne servent qu'à la tournée. MJ2 ne les conserve que de J-1 à J+1 (purge automatique) et ne les met jamais dans une notification push (le push ne porte qu'un signal).
 

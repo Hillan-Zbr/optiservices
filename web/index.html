@@ -258,8 +258,13 @@ AMD02;MARTIN Julie;ARARD 04/05;matin;5;250</pre>
   <p class="msg" id="pl-msg" role="status" aria-live="polite" hidden></p>
   <section class="card ecartes" id="pl-ecartes" hidden>
     <h2>RDV qui ne pourront pas être optimisés <span class="count" id="c-pl-ecartes"></span></h2>
-    <p class="hint">Toutes dates confondues, sur les antennes incluses dans le test : adresse introuvable, localisée seulement à la commune, ou hors de la carte (PACA / Corse). Ces RDV seront écartés du calcul. Corrigez l'adresse dans l'écran Paramètres RDV ou dans Isadom, ou traitez-les manuellement.</p>
+    <p class="hint">Toutes dates confondues, sur les antennes incluses dans le test : adresse et commune introuvables, ou hors de la carte (PACA / Corse). Ces RDV seront écartés du calcul. Corrigez l'adresse dans l'écran Paramètres RDV ou dans Isadom, ou traitez-les manuellement.</p>
     <div class="scroll"><table class="tbl"><thead><tr><th>Date</th><th>Code Pat.</th><th>RDV</th><th>Patient</th><th>CP</th><th>Ville</th><th>Adresse</th><th>Intervention</th><th>Créneau</th><th>AMD prévu</th><th>Motif</th></tr></thead><tbody id="t-pl-ecartes"></tbody></table></div>
+  </section>
+  <section class="card ecartes approx" id="pl-commune" hidden>
+    <h2>RDV placés au centre de la commune <span class="count" id="c-pl-commune"></span></h2>
+    <p class="hint">Toutes dates confondues : l'adresse n'a pas été trouvée (et les coordonnées Isadom manquent ou sont hors de la carte). Ces RDV sont optimisés au centre de leur commune (code postal + ville) : l'heure de passage est approximative et l'AMD est prévenu dans MJ2. Corrigez l'adresse ou les coordonnées GPS dans Isadom.</p>
+    <div class="scroll"><table class="tbl"><thead><tr><th>Date</th><th>Code Pat.</th><th>RDV</th><th>Patient</th><th>CP</th><th>Ville</th><th>Adresse</th><th>Intervention</th><th>Créneau</th><th>AMD prévu</th><th>Alerte</th></tr></thead><tbody id="t-pl-commune"></tbody></table></div>
   </section>
 
 

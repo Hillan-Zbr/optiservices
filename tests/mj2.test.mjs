@@ -74,6 +74,12 @@ test("étapes dans l'ordre de passage, avec champ commentaire", () => {
   assert.equal(t.etapes[0].types_visite.length, 2);
 });
 
+test("commentaire d'étape : RDV placé au centre de la commune", () => {
+  const R2 = Object.assign({}, R, { rdv: [R.rdv[0], Object.assign({}, R.rdv[1], { geo: { lat: 43.29, lon: 5.57, commune: true } })] });
+  const t = M.tournee(R2, 0, Object.assign({}, opts, { commentaireEtape: (rd) => (rd.geo.commune ? ' centre de la commune ' : '') }));
+  assert.deepEqual(t.etapes.map((e) => e.commentaire), ['centre de la commune', '']);
+});
+
 test('AMD sans tournée : liste vide (retrait de la tournée chez MJ2)', () => {
   const t = M.tournee(R, 1, opts);
   assert.deepEqual(t.etapes, []);

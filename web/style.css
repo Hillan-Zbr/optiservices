@@ -194,6 +194,9 @@ details.infos div{white-space:pre-wrap}
 .card.ecartes{border:2px solid #f3b7b0;background:#fff8f7}
 .card.ecartes h2{color:#7a1a12}
 .card.ecartes h2::before{content:"⚠ ";}
+.card.ecartes.approx{border-color:#f0d08a;background:#fffbf0}
+.card.ecartes.approx h2{color:#6a4300}
+.warn-txt{color:var(--warn);font-size:14px}
 
 /* recherche par colonne (tableau des RDV) */
 .tbl tr.filters th{padding:4px 8px 8px;text-transform:none;letter-spacing:0;font-weight:400}

@@ -6,7 +6,7 @@
      { date, amds, rdv, res: réponse VROOM, force }
    opts : { version, publieeLe, jourMeme, commentaire, antenne(a) -> { code, nom },
             fenetre(rd) -> [début, fin] en secondes, creneauNom(rd), duree(rd) -> minutes,
-            typesOf(rd) -> codes, typeLibelle(code), forceLibelle(reglage) }
+            typesOf(rd) -> codes, typeLibelle(code), forceLibelle(reglage), commentaireEtape(rd) -> texte }
    message(m) : message flash ou début de tournée, complété des valeurs par défaut.
    Les contrôles renvoient une liste d'erreurs en français (vide si tout va bien). */
 (function (root, factory) {
@@ -66,12 +66,12 @@
       type_besoin: txt(rd.besoin),
       info_rdv: txt(rd.infoRdv),
       acces: { tel1: txt(a.tel1), tel2: txt(a.tel2), batiment: txt(a.batiment), etage: txt(a.etage), porte: txt(a.porte), interphone: txt(a.interphone), info: txt(a.info) },
-      commentaire: ''
+      commentaire: txt(o.commentaireEtape(rd))
     };
   }
 
   function tournee(R, i, opts) {
-    const o = Object.assign({ version: 1, publieeLe: horodatage(), jourMeme: false, commentaire: '', forceLibelle: () => '' }, opts);
+    const o = Object.assign({ version: 1, publieeLe: horodatage(), jourMeme: false, commentaire: '', forceLibelle: () => '', commentaireEtape: () => '' }, opts);
     const a = R.amds[i];
     const route = ((R.res || {}).routes || []).find((x) => x.vehicle === i + 1);
     const steps = route ? route.steps : [];
