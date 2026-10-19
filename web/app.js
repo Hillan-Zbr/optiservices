@@ -1409,12 +1409,36 @@ function renderUnassigned() {
 }
 /* fond de carte OpenStreetMap (l'origine du site est envoyée, comme l'exige sa politique d'usage) */
 const fondOsm = (map) => L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18, attribution: '© OpenStreetMap', referrerPolicy: 'strict-origin-when-cross-origin' }).addTo(map);
+/* bouton « Plein écran » des cartes : la carte couvre toute la page, Échap ou le même bouton la remet en place */
+function pleinEcran(map) {
+  const box = map.getContainer();
+  const Ctl = L.Control.extend({
+    options: { position: 'topright' },
+    onAdd() {
+      const btn = L.DomUtil.create('button', 'map-fs leaflet-bar');
+      btn.type = 'button';
+      const maj = (on) => { btn.textContent = on ? '✕' : '⛶'; btn.title = on ? 'Quitter le plein écran (Échap)' : 'Carte en plein écran'; btn.setAttribute('aria-label', btn.title); btn.setAttribute('aria-pressed', String(on)); };
+      const bascule = (on) => {
+        box.classList.toggle('map-full', on);
+        document.body.classList.toggle('map-full-on', on);
+        maj(on);
+        setTimeout(() => map.invalidateSize(), 0);
+      };
+      maj(false);
+      L.DomEvent.disableClickPropagation(btn);
+      L.DomEvent.on(btn, 'click', () => bascule(!box.classList.contains('map-full')));
+      document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && box.classList.contains('map-full')) bascule(false); });
+      return btn;
+    },
+  });
+  new Ctl().addTo(map);
+}
 function pinIcon(txt, col, dep) {
   return L.divIcon({ className: '', html: `<div class="pin ${dep ? 'dep' : ''}" style="${dep ? '' : 'background:' + col}">${txt}</div>`, iconSize: [26, 26], iconAnchor: [13, 13] });
 }
 function drawResultMap(R) {
   if (typeof L === 'undefined') { $('#map-result').innerHTML = '<p class="empty">Carte indisponible (Leaflet non chargé).</p>'; return; }
-  if (!mapR) { mapR = L.map('map-result'); fondOsm(mapR); }
+  if (!mapR) { mapR = L.map('map-result'); fondOsm(mapR); pleinEcran(mapR); }
   if (layerR) layerR.remove();
   layerR = L.featureGroup().addTo(mapR);
   markersR = {}; linesR = {}; jobVehR = {}; pickedJob = null; hoveredJob = null;
@@ -1561,6 +1585,7 @@ function initTrajet() {
   if (typeof L !== 'undefined' && !mapT) {
     mapT = L.map('map-trajet').setView([43.6, 5.8], 8);
     fondOsm(mapT);
+    pleinEcran(mapT);
   }
   setTimeout(() => mapT && mapT.invalidateSize(), 50);
   if (trajetReady) return; trajetReady = true;

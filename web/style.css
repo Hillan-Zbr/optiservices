@@ -117,6 +117,12 @@ pre.code{margin:12px 0;padding:12px 14px;background:#18212e;color:#e3e9ef;border
 .col-narrow{flex:2 1 340px;min-width:0;display:flex;flex-direction:column;gap:16px}
 .map{height:460px;border-radius:10px;border:1px solid var(--line);background:#e8eef5}
 #map-result{height:520px}
+/* carte en plein écran (bouton ⛶) */
+.map.map-full,body[data-view] .map.map-full{position:fixed;inset:0;z-index:2000;width:100vw;height:100vh;max-height:none;border-radius:0;border:0}
+body.map-full-on{overflow:hidden}
+.map-fs{width:34px;height:34px;background:#fff;border:0;font:600 18px/1 var(--f);color:#18212e;cursor:pointer}
+.map-fs:hover{background:#f4f4f4}
+.map-fs:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
 /* Écrans 2 et 3 : postes fixes 24" (1920 px) — pleine largeur, carte collante */
 body[data-view=planification] .wrap,body[data-view=resultat] .wrap{max-width:none;padding-inline:32px}
