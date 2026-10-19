@@ -1364,7 +1364,7 @@ function exportStatsCsv() {
   if (!statsCour) return;
   const { R, S } = statsCour;
   const lignes = [];
-  const ligne = (rd, suite) => lignes.push([frDate(rd.date || R.date), rd.idRdv || '', rd.patientCode || '', rd.patient, rd.cp, rd.ville, rdvTypes(rd).join(' + '), rdvWindowLabel(rd), rd.amdActuel || '', ...suite]);
+  const ligne = (rd, suite) => lignes.push([frDate(rd.date || R.date), rd.idRdv || '', rd.patientCode || '', rd.patient, rd.adresse || '', rd.cp, rd.ville, rdvTypes(rd).join(' + '), rdvWindowLabel(rd), rd.amdActuel || '', ...suite]);
   R.amds.forEach((a, i) => {
     const r = R.res.routes.find((x) => x.vehicle === i + 1); if (!r) return;
     r.steps.filter((s) => s.type === 'job').forEach((s, n) => ligne(R.rdv[s.job - 1], ['Planifié', a.nom, n + 1, s2hm(s.arrival), '', '']));
@@ -1372,7 +1372,7 @@ function exportStatsCsv() {
   S.nonPlanifies.parMotif.forEach((m) => m.liste.forEach(({ rd, etape }) => ligne(rd, ['Non planifié', '', '', '', m.motif, etape])));
   S.horsAmd.parAmd.forEach((g) => g.liste.forEach((rd) => ligne(rd, ['AMD non prévu', '', '', '', rd.motifAmd || g.motif, 'hors optimisation'])));
   const nom = `rdv_${R.date}.csv`;
-  downloadCsv(nom, ['date', 'id_rdv', 'code_patient', 'patient', 'code_postal', 'ville', 'types_visite', 'creneau', 'amd_prevu', 'statut', 'amd_optimise', 'ordre', 'heure_arrivee', 'motif', 'etape'], lignes);
+  downloadCsv(nom, ['date', 'id_rdv', 'code_patient', 'patient', 'adresse', 'code_postal', 'ville', 'types_visite', 'creneau', 'amd_prevu', 'statut', 'amd_optimise', 'ordre', 'heure_arrivee', 'motif', 'etape'], lignes);
   J.info('action', 'Export des RDV du compte rendu', `${nom} · ${lignes.length} RDV`);
 }
 
@@ -1566,16 +1566,16 @@ function exportJsonMj2() {
   J.info('action', 'Aperçu des tournées au format MJ2', `${nom} · ${tournees.length} AMD`);
 }
 
-/* export de la tournée d'un seul AMD : ordre de passage, code et nom des patients, pour comparer à l'existant */
+/* export de la tournée d'un seul AMD : ordre de passage, code et nom des patients, avec leur adresse, pour comparer à l'existant */
 function exportCsvAmd(i) {
   const R = resultatDuJour(); const a = R && R.amds[i]; if (!a) return;
   const r = R.res.routes.find((x) => x.vehicle === i + 1); if (!r) return;
   const lignes = r.steps.filter((s) => s.type === 'job').map((s, n) => {
     const rd = R.rdv[s.job - 1];
-    return [frDate(R.date), a.nom, n + 1, s2hm(s.arrival), rd.patientCode || '', rd.patient, rd.idRdv || '', rd.typeVisite || '', rd.typePrestation || ''];
+    return [frDate(R.date), a.nom, n + 1, s2hm(s.arrival), rd.patientCode || '', rd.patient, rd.adresse || '', rd.cp || '', rd.ville || '', rd.idRdv || '', rd.typeVisite || '', rd.typePrestation || ''];
   });
   const nom = `tournee_${R.date}_${T.sansAccents(a.nom).replace(/[^A-Za-z0-9]+/g, '_').replace(/^_|_$/g, '')}.csv`;
-  downloadCsv(nom, ['date', 'amd', 'ordre', 'heure_arrivee', 'code_patient', 'patient', 'id_rdv', 'type_visite', 'prestation'], lignes);
+  downloadCsv(nom, ['date', 'amd', 'ordre', 'heure_arrivee', 'code_patient', 'patient', 'adresse', 'code_postal', 'ville', 'id_rdv', 'type_visite', 'prestation'], lignes);
   J.info('action', "Export de la tournée d'un AMD", `${nom} · ${lignes.length} RDV`);
 }
 /* ---------- test trajet ---------- */
