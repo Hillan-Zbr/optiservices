@@ -83,3 +83,18 @@ test('fusionIsadom : mise à jour par IdRdv, retrait des absents, saisies manuel
   assert.deepEqual(r.rdv.map((x) => x.idRdv || 'main'), ['3', 'main', '1', '9']);
   assert.equal(r.rdv.find((x) => x.idRdv === '1').v, 'nouveau');
 });
+
+test('prefPassage : une seule demi-journée cochée dans la fréquence O2', () => {
+  assert.equal(I.prefPassage('1', '0'), 'matin');
+  assert.equal(I.prefPassage('0', 'True'), 'am');
+  assert.equal(I.prefPassage('1', '1'), null);
+  assert.equal(I.prefPassage('', ''), null);
+});
+
+test('fenetrePref : fenêtre réduite à la demi-journée préférée, créneau Isadom gardé si incompatible', () => {
+  const h = (x) => x * 3600;
+  assert.deepEqual(I.fenetrePref([h(8), h(17.5)], [h(8), h(12)]), { w: [h(8), h(12)], conflit: false });
+  assert.deepEqual(I.fenetrePref([h(10), h(15)], [h(13.5), h(17.5)]), { w: [h(13.5), h(15)], conflit: false });
+  assert.deepEqual(I.fenetrePref([h(14), h(17)], [h(8), h(12)]), { w: [h(14), h(17)], conflit: true });
+  assert.deepEqual(I.fenetrePref([h(8), h(12)], null), { w: [h(8), h(12)], conflit: false });
+});

@@ -32,16 +32,23 @@ const CRENEAUX = [
 ];
 const crenOf = (c) => CRENEAUX.find((x) => x.code === c) || CRENEAUX[0];
 /* créneau d'un RDV en texte court : heures Isadom si présentes, sinon nom du créneau */
-const crenTexte = (rd) => (rd.hDeb ? rd.hDeb + '–' + rd.hFin : crenOf(rd.cren).nom);
-/* fenêtre de passage d'un RDV (secondes) : heures réelles Isadom si présentes, sinon créneau paramétré */
-function rdvWindow(rd, p = state.params) {
-  if (rd.hDeb && rd.hFin && hm2s(rd.hFin) > hm2s(rd.hDeb)) return [hm2s(rd.hDeb), hm2s(rd.hFin)];
-  const c = p.creneaux[rd.cren] || p.creneaux.jour;
-  return [hm2s(c[0]), hm2s(c[1])];
+const crenTexte = (rd) => (rd.hDeb ? rd.hDeb + '–' + rd.hFin : crenOf(rd.cren).nom) + (rd.pref ? ' · préf. ' + (rd.pref === 'am' ? 'ap.-midi' : 'matin') : '');
+/* préférence de passage (fréquence O2) appliquée à la fenêtre du RDV : { w, conflit } */
+function rdvPref(rd, p = state.params) {
+  let w;
+  if (rd.hDeb && rd.hFin && hm2s(rd.hFin) > hm2s(rd.hDeb)) w = [hm2s(rd.hDeb), hm2s(rd.hFin)];
+  else { const c = p.creneaux[rd.cren] || p.creneaux.jour; w = [hm2s(c[0]), hm2s(c[1])]; }
+  const cp = rd.pref && p.creneaux[rd.pref];
+  return window.OptiImport.fenetrePref(w, cp ? [hm2s(cp[0]), hm2s(cp[1])] : null);
 }
+/* fenêtre de passage d'un RDV (secondes) : heures réelles Isadom si présentes, sinon créneau paramétré ;
+   réduite à la demi-journée préférée du patient (matin / après-midi de la fréquence O2) quand elle est compatible */
+function rdvWindow(rd, p = state.params) { return rdvPref(rd, p).w; }
 function rdvWindowLabel(rd, p = state.params) {
-  const w = rdvWindow(rd, p);
-  return crenOf(rd.cren).nom + ' ' + s2hm(w[0]) + '–' + s2hm(w[1]);
+  const { w, conflit } = rdvPref(rd, p);
+  const pref = rd.pref ? (rd.pref === 'am' ? 'après-midi' : 'matin') : '';
+  return crenOf(rd.cren).nom + ' ' + s2hm(w[0]) + '–' + s2hm(w[1])
+    + (pref ? (conflit ? ` · préférence ${pref} non respectée (RDV posé sur l'autre demi-journée dans Isadom)` : ` · préférence ${pref}`) : '');
 }
 /* codes d'intervention du RDV (Isadom : plusieurs codes possibles) */
 const rdvTypes = (rd) => (rd.types && rd.types.length ? rd.types : [rd.type]);
@@ -75,7 +82,8 @@ const patientLib = (rd) => rd.patient + (rd.patientCode ? ' (' + rd.patientCode 
 /* informations d'accès Isadom (AnnAdresse) : affichées au RP à la demande, destinées ensuite à MJ2 */
 function rdvInfos(rd) {
   const a = rd.acces || {};
-  return [['Tél.', a.tel1], ['Tél. 2', a.tel2], ['Bâtiment', a.batiment], ['Étage', a.etage], ['Porte', a.porte], ['Interphone', a.interphone], ['Infos', a.info]]
+  const pref = rd.pref ? (rd.pref === 'am' ? 'après-midi' : 'matin') + (rd.prefJour ? ' (' + rd.prefJour + ')' : '') : '';
+  return [['Passage préféré', pref], ['Tél.', a.tel1], ['Tél. 2', a.tel2], ['Bâtiment', a.batiment], ['Étage', a.etage], ['Porte', a.porte], ['Interphone', a.interphone], ['Infos', a.info]]
     .filter(([, v]) => v);
 }
 const infoTitle = (rd) => rdvInfos(rd).map(([k, v]) => k + ' : ' + v).join('\n');
@@ -913,8 +921,11 @@ function importIsadom(rows, head, name) {
       patientCode: get('patientcode'), cp, ville,
       adresse: [get('numerovoie'), get('typevoie'), get('voie')].filter(Boolean).join(' ').replace(/\s+/g, ' '),
       type: types[0], types, typeVisite: get('typevisite'), typePrestation: get('typeprestation'), infoRdv: get('infordv'), amdActuel: get('amdnom'), amdCode: get('amdcode'), antenne: get('antenne'), secteur: get('secteurlibelle'),
+      // préférence de passage de la fréquence O2 (RDV LIVO2L / O2L) : contraint la fenêtre de passage
+      pref: I.prefPassage(get('matino2'), get('apresmidio2')), prefJour: get('prefjouro2'),
       acces: { tel1: get('telfixe'), tel2: get('telautre'), batiment: get('batiment'), etage: get('etage'), porte: get('porte'), interphone: get('interphone'), info: get('infoadresse') }
     };
+    if (rd.pref && rdvPref(rd, p).conflit) warns.push(`RDV ${id} (${frDate(date)}) : préférence de passage ${rd.pref === 'am' ? 'après-midi' : 'matin'} incompatible avec le créneau Isadom ${crenTexte(Object.assign({}, rd, { pref: null }))}, créneau Isadom conservé`);
     const g = I.isadomGeo(get, inZone);
     if (g) rd.geo = g;
     else if (get('lat') || get('w3wlat')) { geoRejet.push(id); rd.geoRejete = get('lat') ? get('lat') + ', ' + get('lon') : get('w3wlat') + ', ' + get('w3wlon'); }
@@ -943,6 +954,8 @@ function importIsadom(rows, head, name) {
   const outScope = [...seen.values()].filter((rd) => !rdvInScope(rd)).length;
   const noGeo = [...seen.values()].filter((rd) => !rd.geo).length;
   const multi = [...seen.values()].filter((rd) => rd.types.length > 1).length;
+  const prefs = [...seen.values()].filter((rd) => rd.pref);
+  const prefAm = prefs.filter((rd) => rd.pref === 'am').length;
 
   const li = (x) => '<li>' + x + '</li>';
   const info = [
@@ -950,6 +963,7 @@ function importIsadom(rows, head, name) {
     `${seen.size - noGeo} localisé${pl(seen.size - noGeo)} par les coordonnées Isadom · ${noGeo} à géocoder par l'adresse`,
     geoRejet.length ? `${geoRejet.length} RDV avec des coordonnées Isadom hors PACA / Corse (erreur de saisie ou patient hors zone) : regéocodés par l'adresse, sinon placés au centre de la commune — RDV ${geoRejet.map(esc).join(', ')}` : '',
     `${multi} RDV à plusieurs types de visite : durée = somme × ${p.multiCoef} %`,
+    prefs.length ? `${prefs.length} RDV avec une préférence de passage (fréquence O2) : ${prefs.length - prefAm} le matin, ${prefAm} l'après-midi` : '',
     outScope ? `${outScope} RDV sur des antennes hors test (non optimisés tant que l'antenne n'est pas incluse dans les paramètres)` : '',
     created.length ? `${created.length} type${pl(created.length)} de visite ajouté${pl(created.length)} aux paramètres : ${created.map((t) => `<code>${esc(t.code)}</code> ${t.duree} min`).join(', ')}` : '',
     unknownAmd.length ? `${unknownAmd.length} AMD absent${pl(unknownAmd.length)} de la liste (leurs RDV ne sont pas pris en compte) : ${unknownAmd.map(([c, n]) => esc(n) + ' <span class="mono">(' + esc(c) + ')</span>').join(', ')} <button class="btn2" id="amd-from-isadom" type="button">Ajouter ${unknownAmd.length > 1 ? 'ces AMD' : 'cet AMD'}</button>` : ''
@@ -960,6 +974,7 @@ function importIsadom(rows, head, name) {
     ? J.info('import', 'Type de visite ajouté', `${t.code} · ${t.nom} : ${t.duree} min (durée métier Isadom)`, 'Fichier : ' + name)
     : J.warn('import', 'Type de visite inconnu ajouté', `${t.code} ajouté aux paramètres avec ${t.duree} min par défaut`, 'Durée à confirmer dans les paramètres · fichier : ' + name)));
   if (unknownAmd.length) J.warn('import', 'AMD inconnus', `${unknownAmd.length} AMD absent${pl(unknownAmd.length)} de la liste : leurs RDV ne sont pas pris en compte`, unknownAmd.map(([c, n]) => `${n} (${c})`));
+  if (prefs.length) J.info('import', 'Préférences de passage', `${prefs.length} RDV avec une préférence de passage (fréquence O2) : ${prefs.length - prefAm} le matin, ${prefAm} l'après-midi`, prefs.map((rd) => 'RDV ' + rd.idRdv + ' : ' + (rd.pref === 'am' ? 'après-midi' : 'matin')));
   if (outScope) J.info('import', 'RDV hors test', `${outScope} RDV sur des antennes non incluses dans le test`);
   if (geoRejet.length) J.warn('import', 'Coordonnées hors zone', `${geoRejet.length} RDV avec des coordonnées Isadom hors PACA / Corse : regéocodés par l'adresse`, geoRejet.map((id) => 'RDV ' + id));
   if (removed) J.info('import', 'RDV retirés', `${removed} RDV absent${pl(removed)} du nouvel export (annulés ou déplacés dans Isadom)`);

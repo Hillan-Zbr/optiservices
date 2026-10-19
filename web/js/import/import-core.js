@@ -41,6 +41,24 @@
     return 'jour';
   }
 
+  /* case à cocher Isadom exportée en CSV : « 1 », « True », « Vrai »… */
+  const coche = (v) => /^(1|true|vrai|oui)$/i.test(String(v || '').trim());
+
+  /* préférence de passage de la fréquence oxygène (OrdOxyAnnuaireFrequenceVisite.bMatin / bApresMidi, 19/10/2026) :
+     'matin' ou 'am' si une seule demi-journée est cochée ; null si aucune ou les deux (pas de contrainte) */
+  function prefPassage(matin, apresMidi) {
+    const m = coche(matin), a = coche(apresMidi);
+    return m === a ? null : m ? 'matin' : 'am';
+  }
+
+  /* fenêtre de passage [début, fin] (secondes) réduite à la demi-journée préférée wPref ;
+     si elles ne se recouvrent pas (RDV posé sur l'autre demi-journée dans Isadom), le créneau Isadom l'emporte */
+  function fenetrePref(w, wPref) {
+    if (!wPref) return { w, conflit: false };
+    const deb = Math.max(w[0], wPref[0]), fin = Math.min(w[1], wPref[1]);
+    return fin > deb ? { w: [deb, fin], conflit: false } : { w, conflit: true };
+  }
+
   /* coordonnées Isadom : W3W figées > lat/lon Isadom > W3W non figées ; null sinon (géocodage BAN).
      get(colonne) lit la ligne ; dansZone({lat, lon}) rejette les points hors de la carte (erreurs de saisie) */
   function isadomGeo(get, dansZone) {
@@ -66,5 +84,5 @@
     return { rdv: keep.concat([...nouveaux.values()]), updated, removed, added: nouveaux.size - updated };
   }
 
-  return { hhmm, cpNormalise, parseCren, crenFromIsadom, isadomGeo, fusionIsadom };
+  return { hhmm, cpNormalise, parseCren, crenFromIsadom, prefPassage, fenetrePref, isadomGeo, fusionIsadom };
 }));
