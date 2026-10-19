@@ -23,6 +23,8 @@ const rdvRef = (rd) => (rd && rd.idRdv ? 'RDV ' + rd.idRdv : 'RDV saisi à la ma
 /* libellé d'un champ de formulaire pour le journal */
 const fieldLabel = (el) => ((el.labels && el.labels[0] && el.labels[0].textContent) || el.getAttribute('aria-label') || el.dataset.k || el.id || '').trim();
 const COLORS = ['#1d4f91', '#2e8b7a', '#c26a1a', '#7a5bb5', '#b5476a', '#4f7a1f', '#8a6d00', '#0f7c9c', '#a33b3b', '#555f6e'];
+/* couleur de la tournée du i-ème AMD : la palette, puis des teintes calculées (angle d'or) pour ne jamais répéter une couleur au-delà de 10 AMD */
+const couleurAmd = (i) => (i < COLORS.length ? COLORS[i] : `hsl(${Math.round((i - COLORS.length) * 137.508 + 20) % 360} 62% ${i % 2 ? 34 : 44}%)`);
 
 const CRENEAUX = [
   { code: 'matin', nom: 'Matin', badge: 'b-matin' },
@@ -1251,7 +1253,7 @@ function renderResult() {
 
   // tournées
   box.innerHTML = R.amds.map((a, i) => {
-    const vid = i + 1; const col = COLORS[i % COLORS.length];
+    const vid = i + 1; const col = couleurAmd(i);
     const r = res.routes.find((x) => x.vehicle === vid);
     const d = depotOf(a.depot) || { nom: a.depot };
     const dLib = esc(d.nom) + (a.depotHabituel ? ` <span class="hint">(en renfort, habituellement ${esc((depotOf(a.depotHabituel) || { nom: a.depotHabituel }).nom)})</span>` : '');
@@ -1444,7 +1446,7 @@ function drawResultMap(R) {
   markersR = {}; linesR = {}; jobVehR = {}; pickedJob = null; hoveredJob = null;
   R.amds.forEach((a, i) => {
     const r = R.res.routes.find((x) => x.vehicle === i + 1); if (!r) return;
-    const col = COLORS[i % COLORS.length];
+    const col = couleurAmd(i);
     if (r.geometry) linesR[r.vehicle] = L.polyline(decodePolyline(r.geometry), { color: col, weight: 4, opacity: 0.85 }).addTo(layerR);
     let n = 0;
     r.steps.forEach((s) => {
