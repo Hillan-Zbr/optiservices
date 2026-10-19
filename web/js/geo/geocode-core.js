@@ -198,5 +198,24 @@
     return horsZone ? { none: true, horsZone: true, label: horsZone.label } : null;
   }
 
-  return { nettoie, raccourcies, tentatives, villeOk, voieOk, localise, SEUIL_BON, SEUIL_MIN };
+  /* Coordonnées Isadom (lat/lon ou W3W) dans la commune du RDV ? (19/10/2026) : une fiche patient peut porter
+     le point d'une autre commune (RDV de Champtercier placé à Pourrières, à 85 km). On compare le point au
+     centre de la commune (même cascade que localise : commune, hameau, code postal) ; au-delà de
+     RAYON_COMMUNE_KM, le point est jugé faux. Sans centre de commune trouvé, le point est gardé.
+     Retourne { ok: true } ou { ok: false, km, commune } */
+  const RAYON_COMMUNE_KM = 25;
+  function distanceKm(a, b) {
+    const rad = (x) => (x * Math.PI) / 180;
+    const dLat = rad(b.lat - a.lat), dLon = rad(b.lon - a.lon);
+    const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLon / 2) ** 2;
+    return 2 * 6371 * Math.asin(Math.sqrt(h));
+  }
+  async function controleCommune(rd, pt, chercher, options) {
+    const centre = await localise({ adresse: '', cp: rd.cp, ville: rd.ville }, chercher, options);
+    if (!centre || centre.none) return { ok: true };
+    const km = distanceKm(pt, centre);
+    return km <= RAYON_COMMUNE_KM ? { ok: true } : { ok: false, km: Math.round(km), commune: centre.label };
+  }
+
+  return { nettoie, raccourcies, tentatives, villeOk, voieOk, localise, distanceKm, controleCommune, SEUIL_BON, SEUIL_MIN, RAYON_COMMUNE_KM };
 }));

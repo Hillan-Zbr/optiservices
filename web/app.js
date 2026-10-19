@@ -315,7 +315,26 @@ async function geocodeRdv(r) {
    sont en cache : seules les nouvelles variantes partent vers la BAN). Les coordonnées Isadom ne sont pas touchées */
 const aGeocoder = (r) => !r.geo || (!r.geo.src && (r.geo.v !== 3 || !!r.geo.none || !!r.geo.commune));
 /* texte d'information d'un RDV placé au centre de sa commune (écran Planification, journal, MJ2) */
-const alerteCommune = (rd) => MOTIF_COMMUNE + (rd.geoRejete ? ` (coordonnées Isadom hors zone : ${rd.geoRejete})` : '');
+const rejetIsadom = (rd) => (rd.geoLoinKm ? `coordonnées Isadom à ${rd.geoLoinKm} km de la commune` : 'coordonnées Isadom hors zone') + ` : ${rd.geoRejete}`;
+const alerteCommune = (rd) => MOTIF_COMMUNE + (rd.geoRejete ? ` (${rejetIsadom(rd)})` : '');
+/* coordonnées Isadom (lat/lon, W3W) loin de la commune du RDV : fiche patient erronée (19/10/2026), le point
+   est ignoré et l'adresse géocodée par la BAN. communeOk évite de refaire le contrôle */
+async function verifieGeoIsadom(r) {
+  const g = r.geo;
+  if (!g || !g.src || g.communeOk) return;
+  const c = await OptiGeocode.controleCommune(r, g, chercherBan, { dansZone: inZone });
+  if (c.ok) { g.communeOk = true; return; }
+  r.geoRejete = g.lat + ', ' + g.lon; r.geoLoinKm = c.km;
+  delete r.geo;
+}
+/* contrôle une liste de RDV ; ceux dont le point Isadom est rejeté sont tracés dans le journal */
+async function verifieGeosIsadom(list, module) {
+  const aVoir = list.filter((r) => r.geo && r.geo.src && !r.geo.communeOk);
+  await pool(aVoir, verifieGeoIsadom);
+  const rejets = aVoir.filter((r) => !r.geo);
+  if (rejets.length) J.warn(module, 'Coordonnées Isadom incohérentes', `${rejets.length} RDV avec des coordonnées Isadom à plus de ${OptiGeocode.RAYON_COMMUNE_KM} km de leur commune : regéocodés par l'adresse (fiche patient à corriger dans Isadom)`, rejets.map((r) => `${rdvRef(r)} · ${r.cp} ${r.ville} · ${rejetIsadom(r)}`));
+  return rejets;
+}
 async function geocodeDepot(d) {
   const cp = (d.adr.match(/\b\d{5}\b/) || [])[0];
   const g = await geocode(d.adr, cp);
@@ -990,16 +1009,20 @@ function importIsadom(rows, head, name) {
     + (all.length ? '<ul>' + all.slice(0, 30).map((x) => li(esc(x))).join('') + (all.length > 30 ? li('…') : '') + '</ul>' : '');
   if (seen.size && !state.rdv.some((r) => r.date === state.date)) state.date = [...dates].sort()[0];
   save(); renderPlan();
-  // localise tout de suite les RDV sans coordonnées Isadom, pour signaler dès l'import ceux qui seront écartés
-  const toGeo = [...seen.values()].filter((rd) => aGeocoder(rd) && rdvPris(rd));
-  if (toGeo.length) {
-    const st = document.createElement('p'); st.className = 'hint'; st.textContent = `Localisation de ${toGeo.length} adresse${pl(toGeo.length)} sans coordonnées Isadom…`;
+  // contrôle les coordonnées Isadom (commune du RDV), puis localise tout de suite les RDV sans coordonnées
+  // retenues, pour signaler dès l'import ceux qui seront écartés
+  const pris = [...seen.values()].filter(rdvPris);
+  if (pris.some((rd) => aGeocoder(rd) || (rd.geo && rd.geo.src))) {
+    const st = document.createElement('p'); st.className = 'hint'; st.textContent = 'Contrôle et localisation des adresses…';
     rep.appendChild(st);
-    pool(toGeo, geocodeRdv)
+    let toGeo = [], rejets = [];
+    verifieGeosIsadom(pris, 'import')
+      .then((r) => { rejets = r; toGeo = pris.filter(aGeocoder); return pool(toGeo, geocodeRdv); })
       .then(() => {
         const nKo = toGeo.filter((rd) => !inZone(rd.geo)).length;
         const nCom = toGeo.filter((rd) => rd.geo && rd.geo.commune).length;
         st.textContent = `${toGeo.length} adresse${pl(toGeo.length)} localisée${pl(toGeo.length)} par géocodage`
+          + (rejets.length ? ` · ${rejets.length} RDV aux coordonnées Isadom à plus de ${OptiGeocode.RAYON_COMMUNE_KM} km de leur commune, ignorées (RDV ${rejets.map((rd) => rd.idRdv).join(', ')}) : fiche patient à corriger dans Isadom` : '')
           + (nCom ? ` · ${nCom} placée${pl(nCom)} au centre de la commune : voir « RDV placés au centre de la commune » à l'écran Planification` : '')
           + (nKo ? ` · ${nKo} introuvable${pl(nKo)} ou hors zone : voir « RDV qui ne pourront pas être optimisés » à l'écran Planification.` : '.');
         renderPlan();
@@ -1086,6 +1109,7 @@ async function optimize() {
     await pool(deps, geocodeDepot);
     // coordonnées déjà connues mais hors zone (import antérieur) : on retente par l'adresse
     day.forEach((r) => { if (r.geo && !r.geo.none && !inZone(r.geo)) delete r.geo; });
+    await verifieGeosIsadom(day, 'optimisation');
     await pool(day.filter(aGeocoder), geocodeRdv);
     save(); renderPlan();
     const badDep = amds.filter((a) => depotOf(a.depot).geo.none);
@@ -1094,7 +1118,7 @@ async function optimize() {
     const excluded = day.filter((r) => !inZone(r.geo)).map((r) => Object.assign(clone(r), { motif: motifGeo(r) }));
     if (excluded.length) J.warn('optimisation', 'RDV écartés du calcul', `${excluded.length} RDV écarté${pl(excluded.length)} de l'optimisation du ${frDate(state.date)} (adresse et commune introuvables ou hors carte)`, excluded.map((r) => `${rdvRef(r)} · ${r.cp} ${r.ville} · ${r.motif}`));
     const approx = jobsR.filter((r) => r.geo.commune);
-    if (approx.length) J.info('optimisation', 'RDV placés au centre de la commune', `${approx.length} RDV du ${frDate(state.date)} optimisé${pl(approx.length)} au centre de leur commune (adresse introuvable) : heure de passage approximative`, approx.map((r) => `${rdvRef(r)} · ${r.cp} ${r.ville}${r.geoRejete ? ' · coordonnées Isadom hors zone ' + r.geoRejete : ''}`));
+    if (approx.length) J.info('optimisation', 'RDV placés au centre de la commune', `${approx.length} RDV du ${frDate(state.date)} optimisé${pl(approx.length)} au centre de leur commune (adresse introuvable) : heure de passage approximative`, approx.map((r) => `${rdvRef(r)} · ${r.cp} ${r.ville}${r.geoRejete ? ' · ' + rejetIsadom(r) : ''}`));
     const badType = jobsR.filter((r) => rdvTypes(r).some((c) => !typeOf(c)));
     if (badType.length) throw new Error('Type d’intervention inconnu pour ' + badType.map((r) => esc(patientLib(r))).join(', '));
 

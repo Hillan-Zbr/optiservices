@@ -102,3 +102,23 @@ test('ville Isadom qui est un hameau : voie du hameau, sinon première commune d
   assert.equal(g2.etape, 'code postal seul');
   assert.equal(g2.label, 'Communefictive');
 });
+
+test('distanceKm : ordre de grandeur correct', () => {
+  const km = G.distanceKm({ lat: 44.0, lon: 6.0 }, { lat: 43.5, lon: 5.7 });
+  assert.ok(km > 55 && km < 65, String(km));
+});
+
+test('controleCommune : point Isadom dans la commune gardé, point lointain rejeté', async () => {
+  const ban = fausseBan({ 'BOURGFICTIF|04999|municipality': [f({ type: 'municipality', label: 'Bourgfictif', city: 'Bourgfictif', lat: 44.1, lon: 6.16 })] });
+  const rd = { cp: '04999', ville: 'BOURGFICTIF' };
+  assert.deepEqual(await G.controleCommune(rd, { lat: 44.12, lon: 6.18 }, ban.chercher), { ok: true });
+  const c = await G.controleCommune(rd, { lat: 43.52, lon: 5.75 }, ban.chercher);
+  assert.equal(c.ok, false);
+  assert.ok(c.km > G.RAYON_COMMUNE_KM);
+  assert.equal(c.commune, 'Bourgfictif');
+});
+
+test('controleCommune : sans centre de commune trouvé, le point Isadom est gardé', async () => {
+  const ban = fausseBan({});
+  assert.deepEqual(await G.controleCommune({ cp: '04999', ville: 'INCONNUE' }, { lat: 43.5, lon: 5.7 }, ban.chercher), { ok: true });
+});
