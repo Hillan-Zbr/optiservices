@@ -201,10 +201,12 @@ function renderDetail(d) {
     return;
   }
   const kv = (k, v) => h('div', {}, h('div.ag-k', {}, k), h('div.ag-v', {}, v));
+  // code postal + commune en pastille, puis le type d'intervention
+  const lieu = h('div.ag-ville', {}, h('span.ag-lieu', {}, d.lieu || d.ville || '?'), ' · ' + d.intervention);
   const voir = h('button.ag-voir', { type: 'button', onclick: () => handlers.onVoirCarte(d.jobId), disabled: !d.surCarte }, 'Voir sur la carte');
   if (d.nonAffecte) {
     fill(
-      h('div', {}, h('div.ag-patient', {}, d.patient), h('div.ag-ville', {}, d.ville + ' · ' + d.intervention)),
+      h('div', {}, h('div.ag-patient', {}, d.patient), lieu),
       h('div.ag-kv', {}, kv('Créneau demandé', d.creneau), kv('Statut', 'Non affecté'), kv('Visite | Prestation', d.visitePrest || '—')),
       d.infoRdv ? h('div.ag-kv.ag-kv1', {}, kv('Info RDV', d.infoRdv)) : null,
       h('p.ag-alert', {}, 'Motif probable : ' + d.motif),
@@ -212,7 +214,7 @@ function renderDetail(d) {
     return;
   }
   fill(
-    h('div', {}, h('div.ag-patient', {}, (d.o2 ? 'O2 · ' : '') + d.patient), h('div.ag-ville', {}, d.ville + ' · ' + d.intervention)),
+    h('div', {}, h('div.ag-patient', {}, (d.o2 ? 'O2 · ' : '') + d.patient), lieu),
     h('div.ag-kv', {},
       kv('Arrivée prévue', fmtHeure(d.arriveeMin)), kv('Fin d’intervention', fmtHeure(d.endMin)),
       kv('Créneau demandé', d.creneau || '—'), kv('Durée', fmtDuree(dureeMin(d))),

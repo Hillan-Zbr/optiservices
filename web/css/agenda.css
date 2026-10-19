@@ -123,6 +123,7 @@ body[data-view=resultat][data-rvue=agenda] #r-compare{display:none!important}
 .ag-detail-body{display:flex;flex-direction:column;gap:10px}
 .ag-patient{font-size:18px;font-weight:700}
 .ag-ville{font-size:14px;color:var(--ag-txt3)}
+.ag-lieu{display:inline-block;padding:1px 8px;border-radius:4px;background:#CADB2A;color:#1f2a00;font-weight:600}
 .ag-kv{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 16px;font-size:14px}
 .ag-k{font-size:12px;color:var(--ag-txt2)}
 .ag-v{font-weight:600;font-variant-numeric:tabular-nums}

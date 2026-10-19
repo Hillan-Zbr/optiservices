@@ -104,8 +104,8 @@ function titreRdv(rd) {
   return [app.patientLib(rd), rd.ville || '?', ji.intervention, ji.creneau.label].join(' · ');
 }
 
-// informations Isadom affichées dans le détail : « Visite | Prestation » et Info RDV
-const extraRdv = (rd) => (rd ? { visitePrest: app.rdvVisitePrest(rd), infoRdv: rd.infoRdv || '' } : {});
+// informations Isadom affichées dans le détail : code postal + commune, « Visite | Prestation » et Info RDV
+const extraRdv = (rd) => (rd ? { lieu: [rd.cp, rd.ville].filter(Boolean).join(' '), visitePrest: app.rdvVisitePrest(rd), infoRdv: rd.infoRdv || '' } : {});
 function detailFor(jobId) {
   if (!current || jobId == null) return null;
   for (const c of current.opt.colonnes) {
